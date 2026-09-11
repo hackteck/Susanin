@@ -82,7 +82,8 @@ function inferDirection(network: Network, routeId: string, track: Track): Direct
   return best && best.delta <= MAX_BEARING_DELTA ? best.direction : null
 }
 
-const observe = (id: string, lat: number, lon: number, now: number): Track => {
+/** Exported for its test; nothing outside this module calls it. */
+export const observe = (id: string, lat: number, lon: number, now: number): Track => {
   const previous = tracks.get(id)
 
   if (!previous) {
@@ -100,6 +101,7 @@ const observe = (id: string, lat: number, lon: number, now: number): Track => {
     return fresh
   }
 
+  const sinceLastSample = now - previous.seenAt
   previous.seenAt = now
   const moved = haversineMeters(previous, { lat, lon })
 
@@ -107,10 +109,16 @@ const observe = (id: string, lat: number, lon: number, now: number): Track => {
   // faster than the fleet reports. Keep the last real heading rather than
   // dropping it every other request — but let the speed decay, because a bus
   // that has stopped should not keep advertising the speed it had before it did.
+  //
+  // Decayed by the time since the *last sample*, not since the bus stopped. This
+  // runs once per request, so one standstill is observed many times over, and
+  // applying the whole standing time on each of them compounded: a bus at a red
+  // light read as stopped dead inside thirty seconds instead of halving per
+  // minute, and wore the ≈ mark for it. Per-interval factors multiply out to
+  // the same half-life however many callers there are.
   if (moved < MOVED_METERS) {
     if (previous.speedKmh !== null) {
-      const standing = now - previous.movedAt
-      previous.speedKmh = previous.speedKmh * Math.pow(0.5, standing / SPEED_HALF_LIFE_MS)
+      previous.speedKmh = previous.speedKmh * Math.pow(0.5, sinceLastSample / SPEED_HALF_LIFE_MS)
     }
     return previous
   }

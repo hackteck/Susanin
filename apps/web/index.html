@@ -47,7 +47,11 @@
       property="og:description"
       content="28 маршрутов, 578 остановок и все автобусы, которые сейчас на линии."
     />
-    <meta property="og:image" content="/icons/icon-512.png" />
+    <!-- Absolute, and the one place the production domain is written into the
+         app: scrapers do not resolve a relative image against the page, so a
+         relative path here meant no preview at all. -->
+    <meta property="og:url" content="https://susanin-batumi.vercel.app/" />
+    <meta property="og:image" content="https://susanin-batumi.vercel.app/icons/icon-512.png" />
     <meta name="twitter:card" content="summary" />
   </head>
   <body>

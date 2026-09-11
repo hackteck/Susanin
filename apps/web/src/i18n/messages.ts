@@ -82,6 +82,9 @@ export const messages = {
     ka: 'ცოცხალი მონაცემები მიუწვდომელია — ნაჩვენებია განრიგი',
     en: 'Live data unavailable — showing the timetable',
   },
+  // The same fact for the header and the route page, which have no timetable to
+  // promise and no room to promise it in.
+  feedUnavailable: { ru: 'Нет живых данных', ka: 'ცოცხალი მონაცემები არ არის', en: 'No live data' },
 
   searchStops: { ru: 'Поиск остановки', ka: 'გაჩერების ძებნა', en: 'Search stops' },
   noResults: { ru: 'Ничего не найдено', ka: 'ვერაფერი მოიძებნა', en: 'Nothing found' },
@@ -121,6 +124,8 @@ export const messages = {
     en: 'One timetable for every day — the source does not separate weekdays.',
   },
   everyMinutes: { ru: 'интервал', ka: 'ინტერვალი', en: 'every' },
+  // Folding a timetable back up is not «Сбросить»: that word resets a filter.
+  showLess: { ru: 'Свернуть', ka: 'ჩაკეცვა', en: 'Show less' },
 
   loading: { ru: 'Загрузка…', ka: 'იტვირთება…', en: 'Loading…' },
   loadFailed: { ru: 'Не удалось загрузить данные', ka: 'მონაცემები ვერ ჩაიტვირთა', en: 'Could not load data' },

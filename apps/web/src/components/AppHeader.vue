@@ -12,7 +12,7 @@
     <div :class="$style.actions">
       <span v-if="transit.watching" :class="$style.status">
         <i :class="statusClasses" />
-        {{ locale.plural(transit.runningVehicles.length, "buses") }} {{ locale.t(lineForm) }}
+        {{ statusText }}
       </span>
 
       <LocaleMenu />
@@ -52,8 +52,19 @@ const lineForm = computed(() => (transit.selectedRouteIds.length === 1 ? "onTheL
 
 const themeIcon = computed(() => (theme.value === "dark" ? Sun : Moon));
 
+// A count of buses the feed stopped reporting a minute ago is not a count; once
+// the store has given up on the feed the header says so instead.
+const statusText = computed(() =>
+  transit.liveStale
+    ? locale.t("feedUnavailable")
+    : `${locale.plural(transit.runningVehicles.length, "buses")} ${locale.t(lineForm.value)}`,
+);
+
 // The dot is the only thing on screen that says the feed is still answering.
-const statusClasses = computed(() => [$style.dot, { [$style.isLive]: transit.runningVehicles.length > 0 }]);
+const statusClasses = computed(() => [
+  $style.dot,
+  { [$style.isLive]: !transit.liveStale && transit.runningVehicles.length > 0 },
+]);
 </script>
 
 <style module lang="scss">

@@ -44,17 +44,20 @@ app.use(
 const STATIC_CACHE = 'public, max-age=300, s-maxage=600, stale-while-revalidate=3600'
 const LIVE_CACHE = 'public, max-age=0, s-maxage=4, stale-while-revalidate=4'
 
+// Deliberately silent about *where* the feed is: this endpoint is public, and
+// the README asks people not to hit the municipal box directly. The address is
+// in the config and the server's own startup log, where an operator looks.
 app.get('/health', async (context) => {
   try {
     const network = await getNetwork()
     return context.json({
       status: 'ok',
-      upstream: config.upstreamBase,
       routes: network.routeList.length,
       stops: network.stopList.length,
     })
   } catch (error) {
-    return context.json({ status: 'degraded', upstream: config.upstreamBase, error: String(error) }, 503)
+    const message = error instanceof Error ? error.message : String(error)
+    return context.json({ status: 'degraded', error: message }, 503)
   }
 })
 
@@ -133,7 +136,7 @@ app.get('/vehicles', async (context) => {
 
 app.onError((error, context) => {
   if (error instanceof UpstreamError) {
-    console.error(`upstream ${error.status} for ${error.url}`)
+    console.error(`upstream ${error.status || 'unreachable'} for ${error.url}: ${error.message}`)
     return context.json({ error: 'upstream unavailable' }, 502)
   }
 

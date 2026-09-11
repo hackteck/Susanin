@@ -15,7 +15,7 @@
       </ul>
 
       <Button v-if="canExpand" variant="ghost" size="sm" @click="expanded = !expanded">
-        {{ expanded ? locale.t("clearSelection") : `${locale.t("timetable")} · ${schedule.times.length}` }}
+        {{ expanded ? locale.t("showLess") : `${locale.t("timetable")} · ${schedule.times.length}` }}
       </Button>
     </template>
   </article>

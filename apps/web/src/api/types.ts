@@ -1,7 +1,7 @@
 // Mirrors @susanin/api's public model. Hand-written rather than shared through
 // a package: two apps deployed together are not a reason to invent a third.
 
-/** Russian is a transliteration of the Georgian — see the API's translit.ts. */
+/** Russian and English are OpenStreetMap's where it has them; transliteration is the fallback — see the API's names.ts. */
 export interface LocalizedName {
   ka: string
   en: string

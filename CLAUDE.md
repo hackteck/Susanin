@@ -153,6 +153,14 @@ minutes, with a two-minute grace for a bus we have only just met. Parked buses
 are drawn dimmed rather than hidden — they exist — but they are excluded from
 "N buses running" and from every arrival estimate.
 
+**A feed that has stopped answering is not a fleet that has stopped moving.**
+One dropped poll keeps the markers where they were — the next poll is five
+seconds away. Three in a row clears them, and the header says «Нет живых
+данных» instead of a count, because a bus drawn from a dead feed looks current,
+which is the one thing this app promises not to do. The arrival board already
+said so for itself; the map and the header used to keep a frozen fleet and a
+green dot for as long as the outage lasted.
+
 **After about 20:00 the feed returns `[]` for every route.** The fleet stops and
 so does the data. That is correct behaviour, not an outage, and it means live
 markers and countdowns cannot be verified in the evening. For that,
@@ -544,6 +552,23 @@ What is cached, and why each choice is deliberate:
   quota exceeded, interrupted download, storage disabled, a truncated blob — is
   caught and ignored rather than surfaced.
 
+  Two more things the same cache needed, both found by turning the network off.
+  The manifest is remembered in `localStorage`: the stored copy is keyed by the
+  sha256 the manifest carries, so with the manifest unreachable the archives
+  could never be opened, and the map went grey offline — on the one visit the
+  cache exists for. And the archives are requested with the sha in the query
+  string, because `/tiles/` is marked immutable for a year under a file name
+  that never changes: a rebuilt archive would otherwise be read out of the
+  browser's HTTP cache as last year's bytes, and the background download would
+  fetch the same stale bytes and fail its own size check for ever.
+
+- **A deploy breaks the tabs that are open across it**, because every hashed
+  chunk changes and `vercel remove --safe` deletes the deployment the old ones
+  lived in; the next lazy import fails and the reader gets the "feed is not
+  answering" screen with a Retry that cannot succeed. `main.ts` listens for
+  Vite's `vite:preloadError` and reloads once per half-minute, which fetches the
+  new index and the chunks it names.
+
 - **Live positions and arrivals are deliberately NOT cached.** A cached bus is
   worse than no bus, because it looks current. With the feed unreachable the
   arrival board says so in as many words (`liveUnavailable`) rather than falling
@@ -707,11 +732,6 @@ prebuilt flow (`link --project <package.json name>` → `pull` → `build --prod
 - **Typecheck and tests gate the deploy**, in a `verify` job that also runs on
   pull requests (where it needs no token). A red suite should stop a release,
   not follow it.
-- **The deployment is smoke-tested after it ships.** The frontend is static and
-  will deploy happily while the function is broken, so the workflow curls
-  `/api/health` on the new URL. A 503 is a warning, not a failure: that is the
-  feed's night-time state, not a bad deploy.
-
 - **There is no post-deploy smoke test, and that is a decision.** Vercel's
   Deployment Protection covers the *generated* deployment URL and leaves only the
   production domain public — so the URL a fresh deployment has is precisely the

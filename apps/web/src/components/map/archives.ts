@@ -99,21 +99,60 @@ const write = async (key: string, entry: Stored) => {
  */
 const sourceFor = (blob: Blob, url: string): Source => new FileSource(new File([blob], url))
 
-export const loadManifest = async (base: string): Promise<Manifest | null> => {
+const MANIFEST_KEY = 'basemap-manifest'
+
+// The last manifest seen. The stored archives are keyed by the sha256 it
+// carries, so without it they cannot be opened at all — and the manifest is a
+// network fetch. Offline, that returned null, the map fell back to URLs it
+// could not reach either, and the reader got a grey map with 11 MB of the
+// right one sitting in IndexedDB. On the one visit the cache exists for.
+const rememberManifest = (manifest: Manifest) => {
   try {
-    const response = await fetch(`${base}tiles/manifest.json`, { cache: 'no-cache' })
-    return response.ok ? ((await response.json()) as Manifest) : null
+    localStorage.setItem(MANIFEST_KEY, JSON.stringify(manifest))
+  } catch {
+    // Storage disabled or full. The next visit will try again.
+  }
+}
+
+const recallManifest = (): Manifest | null => {
+  try {
+    const stored = localStorage.getItem(MANIFEST_KEY)
+    return stored ? (JSON.parse(stored) as Manifest) : null
   } catch {
     return null
   }
 }
+
+export const loadManifest = async (base: string): Promise<Manifest | null> => {
+  try {
+    const response = await fetch(`${base}tiles/manifest.json`, { cache: 'no-cache' })
+    if (!response.ok) return recallManifest()
+    const manifest = (await response.json()) as Manifest
+    rememberManifest(manifest)
+    return manifest
+  } catch {
+    return recallManifest()
+  }
+}
+
+/**
+ * The archive's URL, versioned by its content. The file name never changes and
+ * vercel.json marks /tiles/ immutable for a year — so after a planet rebuild a
+ * returning browser's HTTP cache kept answering range requests from the old
+ * file, and handed the background download the old bytes too, which the size
+ * check then rejected: the new copy was never stored, and the old map was drawn
+ * with confidence. A sha in the query makes each build its own URL, which is
+ * what `immutable` was promising all along.
+ */
+const archiveUrl = (base: string, entry: ArchiveEntry) =>
+  `${base}${entry.url.replace(/^\//, '')}?v=${entry.sha256.slice(0, 12)}`
 
 /**
  * The source for one archive: the stored copy when there is a current one, and
  * otherwise the URL, so the map draws immediately either way.
  */
 export const openArchive = async (base: string, entry: ArchiveEntry): Promise<ArchiveSource> => {
-  const url = `${base}${entry.url.replace(/^\//, '')}`
+  const url = archiveUrl(base, entry)
   if (typeof indexedDB === 'undefined') return url
 
   const blob = await read(entry.sha256, entry.sha256)
@@ -158,8 +197,7 @@ export const cacheArchives = async (base: string, manifest: Manifest) => {
   for (const entry of Object.values(manifest.archives)) {
     if (await read(entry.sha256, entry.sha256)) continue
     try {
-      const url = `${base}${entry.url.replace(/^\//, '')}`
-      const response = await fetch(url)
+      const response = await fetch(archiveUrl(base, entry))
       if (!response.ok) continue
       const blob = await response.blob()
       // A truncated download would be stored as a valid-looking archive and then

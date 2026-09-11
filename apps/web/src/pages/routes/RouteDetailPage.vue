@@ -12,7 +12,10 @@
         <Button variant="outline" size="sm" @click="showOnMap">{{ locale.t("map") }}</Button>
       </header>
 
-      <Alert v-if="!runningNow.length" variant="info" :title="locale.t('noBuses')" />
+      <!-- "No buses" and "we cannot see the buses" are different facts, and
+           only the first is about the route. -->
+      <Alert v-if="transit.liveStale" variant="info" :title="locale.t('feedUnavailable')" />
+      <Alert v-else-if="!runningNow.length" variant="info" :title="locale.t('noBuses')" />
 
       <Tabs v-model="activeDirection" :tabs="directionTabs" variant="line" />
 
@@ -55,9 +58,11 @@ onUnmounted(stopWatching);
 
 const activeDirection = ref(String(detail.directions[0]?.direction ?? 1));
 
+// The terminal alone, as on every arrival row: a rider navigates by where the
+// bus is going, and "outbound" is not a place.
 const directionTabs = computed<TabItem[]>(() =>
   detail.directions.map((leg) => ({
-    label: `${locale.t(leg.direction === 1 ? "outbound" : "inbound")} · ${locale.name(leg.to)}`,
+    label: `→ ${locale.name(leg.to)}`,
     value: String(leg.direction),
   })),
 );

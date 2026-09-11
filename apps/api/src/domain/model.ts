@@ -2,9 +2,10 @@
 // ids stay opaque strings, everything else is camelCase and localised.
 
 /**
- * Georgian is the real name; English is often the same text (see CLAUDE.md);
- * Russian is a transliteration of the Georgian, because that is what is written
- * on the pole and only 171 of 578 stops have a genuinely Latin name at all.
+ * Georgian is the real name — what is painted on the pole. Russian and English
+ * come from OpenStreetMap's own translations where it has them (every pole, at
+ * the last harvest); the feed's English only when it is genuinely Latin, which
+ * is 171 of 578; and transliteration last. See names.ts.
  */
 export interface LocalizedName {
   ka: string

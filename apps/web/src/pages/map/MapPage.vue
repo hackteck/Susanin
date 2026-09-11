@@ -248,10 +248,14 @@ const locateTitle = computed(() =>
 // A position we already hold goes on screen now; the refresh that follows is
 // silent. Waiting twenty seconds for a fix before moving to the dot we are
 // already drawing is the thing that made this button feel broken.
+//
+// With no fix, `useMyLocation` has already asked for one, out loud. Asking a
+// second time here made every refusal two sticky toasts.
 const onLocate = () => {
   proximity.useMyLocation();
-  if (proximity.fix) flyToPoint(proximity.fix.lat, proximity.fix.lon);
-  proximity.locate({ silent: !!proximity.fix });
+  if (!proximity.fix) return;
+  flyToPoint(proximity.fix.lat, proximity.fix.lon);
+  proximity.locate({ silent: true });
 };
 
 const pickedPoint = computed(() =>

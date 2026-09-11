@@ -113,14 +113,26 @@ export const useTransit = defineStore('transit', () => {
   const watchers = ref(0)
   const watching = computed(() => watchers.value > 0)
 
+  /** Failed polls in a row before what is drawn stops being an answer. */
+  const MISSED_POLLS_BEFORE_STALE = 3
+  const missedPolls = ref(0)
+  /** The feed has gone quiet long enough that the fleet on screen would be a guess. */
+  const liveStale = computed(() => missedPolls.value >= MISSED_POLLS_BEFORE_STALE)
+
   const refreshVehicles = async () => {
     // A hidden tab must not keep the upstream fan-out running.
     if (document.hidden) return
     try {
       vehicles.value = await api.vehicles(selectedRouteIds.value.length ? selectedRouteIds.value : null)
+      missedPolls.value = 0
     } catch {
-      // A dropped poll is not worth surfacing: the next one is five seconds away
-      // and the markers on screen are still the best answer we have.
+      // One dropped poll is not worth surfacing: the next one is five seconds
+      // away and the markers on screen are still the best answer we have. Three
+      // in a row is a feed that has gone, and a bus drawn from a dead feed looks
+      // current — the one thing this app promises not to do — so they come off,
+      // and the header says why instead of counting them.
+      missedPolls.value++
+      if (liveStale.value) vehicles.value = []
     }
   }
 
@@ -149,6 +161,7 @@ export const useTransit = defineStore('transit', () => {
         window.clearInterval(timer)
         timer = undefined
         vehicles.value = []
+        missedPolls.value = 0
       }
     }
   }
@@ -166,6 +179,7 @@ export const useTransit = defineStore('transit', () => {
     visibleVehicles,
     runningVehicles,
     watching,
+    liveStale,
     POLL_MS,
     routeDetails,
     loadRouteDetail,

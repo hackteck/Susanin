@@ -13,10 +13,12 @@
         </p>
       </section>
 
+      <!-- The stop names are OSM's too (name:ru / name:en), and ODbL asks for
+           that to be said wherever they are shown. -->
       <p :class="$style.credit">
-        Map data ©
+        Map data and stop names ©
         <a href="https://www.openstreetmap.org/copyright" rel="noreferrer">OpenStreetMap</a>
-        contributors.
+        contributors, ODbL.
       </p>
     </div>
   </ScrollArea>

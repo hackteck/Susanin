@@ -94,7 +94,7 @@ const prunePublished = (now: number) => {
  * the published instant is held steady against small upward revisions and only
  * eased toward genuinely worse news.
  */
-function ratchet(key: string, rawArrivesAt: number, now: number): number {
+export function ratchet(key: string, rawArrivesAt: number, now: number): number {
   const previous = published.get(key)
 
   if (!previous) {
@@ -102,11 +102,19 @@ function ratchet(key: string, rawArrivesAt: number, now: number): number {
     return rawArrivesAt
   }
 
+  // Sooner lands at once; a little later is held where it was; a lot later is
+  // eased in. The deadband used to be the other way round — a small upward
+  // revision was adopted raw — so the countdown ticked *up* by as much as
+  // nineteen seconds a poll, which is the one thing rule 1 says never happens.
+  // Holding is self-correcting: a bus that really is slower drifts past the
+  // deadband on the next poll and is eased from there.
   const drift = rawArrivesAt - previous.arrivesAt
   const next =
-    drift <= 0 || Math.abs(drift) < RATCHET_DEADBAND_MS
+    drift <= 0
       ? rawArrivesAt
-      : previous.arrivesAt + RATCHET_ALPHA * drift
+      : drift < RATCHET_DEADBAND_MS
+        ? previous.arrivesAt
+        : previous.arrivesAt + RATCHET_ALPHA * drift
 
   published.set(key, { arrivesAt: next, at: now })
   return next

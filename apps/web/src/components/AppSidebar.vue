@@ -36,7 +36,11 @@ const route = useRoute();
 // The sidebar is shared by every page, including the ones that never load the
 // network for themselves — without this the route filter and the stop search
 // are both empty on those. Not awaited: they can appear a moment after the nav.
-void useTransit().loadNetwork();
+// A failure here is the page's to report, not the sidebar's: it just stays
+// empty, and the rejection is not left to reach the console unhandled.
+void useTransit()
+  .loadNetwork()
+  .catch(() => {});
 
 // Values are route paths, so `go` navigates and `active` follows the URL.
 const navItems = computed<SidebarGroupItem[]>(() => [

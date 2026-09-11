@@ -62,9 +62,11 @@ api/        Vercel entry point; mounts the same Hono app.
 ## Deploying
 
 Pushing to `master` runs `.github/workflows/vercel.yml`: typecheck and tests
-first, then Vercel's prebuilt flow, then a curl of `/api/health` on the new
-deployment — because the static frontend will happily ship while the API
-function is broken.
+first, then Vercel's prebuilt flow. There is no post-deploy smoke test — the
+generated deployment URL sits behind Deployment Protection, so the workflow
+cannot reach it (`CLAUDE.md` has the reasoning). The static frontend will
+happily ship while the API function is broken, so after a deploy check
+`/api/health` on the production domain yourself.
 
 It needs one secret, `VERCEL_TOKEN`, and no environment variables. Two settings
 worth reading `CLAUDE.md` about before changing: the function's `maxDuration`
@@ -90,8 +92,9 @@ GET /api/stops/:id/arrivals     next scheduled departures and live estimates
 GET /api/vehicles?routes=a,b    live positions; omit `routes` for the whole city
 ```
 
-Ids are opaque strings. Names come back as `{ ka, en, ru }` — Russian is a
-transliteration of the Georgian, since seven stops in ten have no Latin name. A
+Ids are opaque strings. Names come back as `{ ka, en, ru }` — Russian and
+English are OpenStreetMap's own translations where it has them, which is every
+pole at the last harvest; a name OSM has never mapped is transliterated. A
 route carries a `hue` rather than a colour, so the client's theme decides how
 dark it is. An arrival carries `arrivesAt` as an instant, not just a minute
 count, so the client can count down against it.
@@ -124,7 +127,9 @@ So this app derives what the feed doesn't provide:
 - **Whether a bus is running at all** — the feed keeps reporting vehicles that
   finished hours ago, so anything that has not moved for ten minutes is drawn
   dimmed and excluded from the counts and the estimates.
-- **Russian stop names**, transliterated from the Georgian at build time.
+- **Russian and English stop names**, harvested from OpenStreetMap's `name:ru`
+  and `name:en` tags at build time (`tools/build-names.mjs`), with
+  transliteration only for what OSM has never mapped.
 
 And it does not pretend to have what nobody has: no per-weekday timetables (the
 source keeps one schedule for every day), no occupancy, no service alerts.

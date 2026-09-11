@@ -27,7 +27,9 @@ export default defineConfig(() => {
           start_url: '/',
           scope: '/',
           display: 'standalone',
-          orientation: 'portrait',
+          // No `orientation`: an installed app with `portrait` cannot be turned
+          // at all, and a map is the one screen where turning the phone is
+          // worth something.
           // Matches the light theme's background so the splash does not flash
           // a colour the app never uses.
           background_color: '#ffffff',
@@ -48,6 +50,10 @@ export default defineConfig(() => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,svg,woff2}'],
           navigateFallback: '/index.html',
+          // A navigation is a page load, and the API and the tiles are not
+          // pages: typing /api/health into an installed browser got the app
+          // shell back from the worker instead of the JSON.
+          navigateFallbackDenylist: [/^\/api\//, /^\/tiles\//],
           runtimeCaching: [
             {
               // The network — routes, stops, timetables. This is the whole point

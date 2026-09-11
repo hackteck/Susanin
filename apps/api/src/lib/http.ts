@@ -3,11 +3,12 @@ import { config } from '../config.ts'
 export class UpstreamError extends Error {
   // Written out rather than declared as constructor parameter properties:
   // Node strips types instead of compiling them, so TS-only syntax can't run.
+  /** The HTTP status, or 0 when there was no response at all. */
   status: number
   url: string
 
-  constructor(message: string, status: number, url: string) {
-    super(message)
+  constructor(message: string, status: number, url: string, options?: ErrorOptions) {
+    super(message, options)
     this.name = 'UpstreamError'
     this.status = status
     this.url = url
@@ -43,9 +44,16 @@ export async function getJson<T>(url: string, init?: RequestInit & { attempts?: 
 
       return (await response.json()) as T
     } catch (error) {
-      lastError = error
+      // A timeout or a refused connection is upstream's failure as much as a 503
+      // is, and the caller has to be able to say so. Left as the TypeError it
+      // arrives as, it fell through to the generic handler and the API answered
+      // 500 — our fault, by the status code — for a feed that was simply down.
+      lastError =
+        error instanceof UpstreamError
+          ? error
+          : new UpstreamError(`upstream unreachable: ${(error as Error).message}`, 0, url, { cause: error })
       // A 4xx is an answer, not a hiccup — retrying it just costs time.
-      if (error instanceof UpstreamError && error.status < 500) break
+      if (error instanceof UpstreamError && error.status >= 400 && error.status < 500) break
       if (attempt < attempts) await sleep(250 * attempt)
     }
   }
