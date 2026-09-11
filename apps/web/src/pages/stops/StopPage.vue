@@ -1,6 +1,15 @@
 <template>
   <ScrollArea as="main">
     <div :class="$style.page">
+      <!-- The app installs as a PWA with no browser chrome, and iOS standalone
+           has no back control at all — so without this a stop is a dead end.
+           Derived from where the selection came from rather than from history,
+           so a shared link behaves the same as a tap. -->
+      <RouterLink :to="backTo" :class="$style.back">
+        <Icon :icon="ArrowLeft" :size="16" />
+        {{ locale.t(backKey) }}
+      </RouterLink>
+
       <header :class="$style.head">
         <h1 :class="$style.title">{{ locale.name(stop.name) }}</h1>
         <p :class="$style.subtitle">{{ locale.t("stopNumber") }} {{ stop.code }}</p>
@@ -54,8 +63,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { Map as MapIcon } from "lucide";
+import { RouterLink, useRoute, useRouter } from "vue-router";
+import { ArrowLeft, Map as MapIcon } from "lucide";
 import { Icon } from "@surstromming/icon";
 import { ScrollArea } from "@surstromming/scroll-area";
 import ArrivalBoard from "@/components/ArrivalBoard.vue";
@@ -65,13 +74,24 @@ import { api } from "@/api/client";
 import { useArrivals } from "@/composables/useArrivals";
 import { useNow } from "@/composables/useNow";
 import { useLocale } from "@/stores/locale";
+import { useProximity } from "@/stores/proximity";
 import { useTransit } from "@/stores/transit";
 
 const route = useRoute();
 const router = useRouter();
 const locale = useLocale();
+const proximity = useProximity();
 const transit = useTransit();
 const now = useNow();
+
+// Where this stop was reached from. A picked point still lives in the store, so
+// returning to the map re-opens the sheet that produced this.
+const backTo = computed(() => (proximity.origin?.kind === "me" ? "/nearby" : "/"));
+const backKey = computed<"backToNearby" | "backToPickedPoint" | "backToMap">(() => {
+  if (proximity.origin?.kind === "me") return "backToNearby";
+  if (proximity.origin?.kind === "point") return "backToPickedPoint";
+  return "backToMap";
+});
 
 const stopId = String(route.params.id);
 const stop = await api.stop(stopId);
@@ -123,6 +143,27 @@ const nowInBatumi = computed(() => batumiClock.format(new Date(now.value)));
   max-width: design.spacing(200);
   margin: 0 auto;
   padding: design.spacing(6) design.spacing(4);
+}
+
+// A styled RouterLink rather than `Button :as`, matching the map panel's own
+// link — and it must be a real <a href> so middle-click and long-press work.
+.back {
+  display: inline-flex;
+  gap: design.spacing(1.5);
+  align-items: center;
+  align-self: flex-start;
+  color: design.color(muted-foreground);
+  font-size: 0.8125rem;
+  text-decoration: none;
+
+  &:hover {
+    color: design.color(foreground);
+  }
+
+  &:focus-visible {
+    outline: 2px solid design.color(ring);
+    outline-offset: 2px;
+  }
 }
 
 .head {

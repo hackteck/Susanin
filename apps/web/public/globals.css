@@ -26,6 +26,17 @@
 
   --user-ring: oklch(1 0 0);
   --user-fill: oklch(0.55 0.22 258);
+
+  /* The accuracy halo: the dot's own blue, weak enough to read the map through.
+     Not a design token — it is the map's furniture, exactly as --stop-ring and
+     --route-casing are. */
+  --user-accuracy-fill: oklch(0.55 0.22 258 / 14%);
+  --user-accuracy-ring: oklch(0.55 0.22 258 / 35%);
+
+  /* A picked point is neither a stop nor a route, so it borrows neither's
+     colour — the 28 route hues already own colour on this map. */
+  --pick-ring: oklch(0.42 0 0);
+  --pick-fill: oklch(1 0 0 / 60%);
 }
 
 [data-theme='dark'] {
@@ -78,6 +89,12 @@
 
   --user-ring: oklch(0.16 0 0);
   --user-fill: oklch(0.72 0.17 258);
+
+  --user-accuracy-fill: oklch(0.72 0.17 258 / 16%);
+  --user-accuracy-ring: oklch(0.72 0.17 258 / 40%);
+
+  --pick-ring: oklch(0.88 0 0);
+  --pick-fill: oklch(0.16 0 0 / 60%);
 }
 
 /* Text that must reach a screen reader but not the layout. Used where a colour

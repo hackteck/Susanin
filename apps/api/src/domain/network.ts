@@ -1,5 +1,6 @@
 import { fetchDataset, type RawDataset, type RawStop } from '../upstream/thetamaps.ts'
 import { matchChain, measureShape, alignToChain, type MeasuredShape } from './geo.ts'
+import { lookupName } from './names.ts'
 import { toCyrillic } from './translit.ts'
 import type {
   Direction,
@@ -74,14 +75,23 @@ const stripCode = (name: string, code: number) => {
 }
 
 /**
- * Only 171 of 578 stops have a genuinely English name; the rest repeat the
- * Georgian. Showing Georgian text under an "English" label is honest — inventing
- * a transliteration is not.
+ * Georgian is never overridden — it is what is painted on the pole. The other two
+ * come from OpenStreetMap first, because OSM's names are translations and ours
+ * were only ever a transliteration; then from the feed's own English when it is
+ * genuinely Latin (it is for 171 of 578); then, for what nobody has mapped, the
+ * sounded-out fallback. Showing Georgian under an "English" label is honest —
+ * inventing a transliteration and calling it English is not.
  */
 const localize = (ka: string, en: string): LocalizedName => {
-  const isEnglish = LATIN.test(en) && !GEORGIAN.test(en)
   const georgian = ka || en
-  return { ka: georgian, en: isEnglish ? en : georgian, ru: toCyrillic(georgian) }
+  const osm = lookupName(georgian)
+  const isEnglish = LATIN.test(en) && !GEORGIAN.test(en)
+
+  return {
+    ka: georgian,
+    en: osm?.en || (isEnglish ? en : georgian),
+    ru: osm?.ru || toCyrillic(georgian),
+  }
 }
 
 /**

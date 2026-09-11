@@ -56,22 +56,18 @@ export default defineConfig(() => {
                 cacheableResponse: { statuses: [200] },
               },
             },
-            {
-              // Map tiles, so a stop you have looked at before still has a map
-              // around it. Capped hard: tiles are the one thing that could fill
-              // a phone's storage quietly.
-              urlPattern: ({ url }) => url.hostname === 'tile.openstreetmap.org',
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'susanin-tiles',
-                expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 7, purgeOnQuotaError: true },
-                // 0 as well as 200: Leaflet loads tiles as plain <img> with no
-                // crossOrigin, so the response is opaque and reports status 0.
-                // Accepting only 200 silently cached nothing at all — the rule
-                // looked right and stored zero tiles.
-                cacheableResponse: { statuses: [0, 200] },
-              },
-            },
+            // The basemap is deliberately NOT here, and the reason is mechanical
+            // rather than a judgement: it is one 6 MB .pmtiles archive read with
+            // HTTP Range requests, and CacheStorage cannot store a 206 — a
+            // CacheFirst rule over it would cache nothing while looking correct,
+            // which is exactly the trap the OSM raster rule fell into before
+            // (accepting only status 200 for opaque tiles, and silently storing
+            // zero). The archive is immutable and versioned by the planet build
+            // it was cut from, so it is cached by the HTTP cache instead, with
+            // the long immutable header vercel.json sets on /tiles/. Serving
+            // ranges out of a fully cached copy needs workbox-range-requests and
+            // a deliberate 6 MB precache; that is the upgrade if the offline map
+            // is ever wanted as a promise rather than a side effect.
           ],
           // Live positions and arrivals are deliberately absent: a cached bus
           // is worse than no bus, because it looks current.

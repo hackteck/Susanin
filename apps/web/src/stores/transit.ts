@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import type { Route, RouteDetail, Stop, Vehicle } from '@/api/types'
 
@@ -132,6 +132,17 @@ export const useTransit = defineStore('transit', () => {
       // and the markers on screen are still the best answer we have.
     }
   }
+
+  // Changing the selection changes which buses belong on screen, and the feed we
+  // are holding is the wrong shape the moment it changes: with one route picked
+  // we only ever asked upstream for that route, so clearing the selection leaves
+  // every other line simply missing until the next tick. Measured at 2.5s —
+  // half a poll — of a map that looks like it has lost the fleet, and long
+  // enough that the reader starts pressing things. Only while something is
+  // actually watching: nothing else should trigger the 28-way fan-out.
+  watch(selectedRouteIds, () => {
+    if (watching.value) void refreshVehicles()
+  })
 
   /** Ref-counted so several pages can watch the feed without racing the timer. */
   const watchVehicles = () => {

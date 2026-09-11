@@ -131,5 +131,16 @@ const routeTitle = (route: Route) => {
   border-color: oklch(var(--route-l) var(--route-c) var(--hue));
   background-color: oklch(var(--route-l) var(--route-c) var(--hue));
   color: var(--route-label);
+
+  // `.chip:hover` is two classes and this is one, so without a hover of its own
+  // the grey wins on specificity and a selected chip loses its colour while
+  // keeping the white label it was given *because* it had one — white on pale
+  // grey, and the line you picked reads as the only one you didn't.
+  // Hover stays the route's colour and darkens it, so the feedback never costs
+  // the chip its identity.
+  &:hover {
+    background-color: oklch(calc(var(--route-l) - 0.06) var(--route-c) var(--hue));
+    border-color: oklch(calc(var(--route-l) - 0.06) var(--route-c) var(--hue));
+  }
 }
 </style>

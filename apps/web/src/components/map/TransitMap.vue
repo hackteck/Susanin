@@ -15,6 +15,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useCssModule, useTemplateRef, watch } from "vue";
 import L from "leaflet";
+import { leafletLayer } from "protomaps-leaflet";
 import "leaflet/dist/leaflet.css";
 import { useResizeObserver } from "@surstromming/util";
 import type { Stop, Vehicle } from "@/api/types";
@@ -25,6 +26,35 @@ export interface MapShape {
   points: [number, number][];
 }
 
+export interface MapPoint {
+  lat: number;
+  lon: number;
+}
+
+export interface MapUser extends MapPoint {
+  /** Metres. Drawn as a halo, because a bare dot claims a precision GPS has not got. */
+  accuracy: number;
+}
+
+/**
+ * A request to move the view, expressed as data rather than as a method call —
+ * bump `nonce` to re-fire the same destination. The alternative is `defineExpose`,
+ * which would make the map imperative from outside and is the thing this
+ * component exists to avoid.
+ */
+export interface MapFlyTo extends MapPoint {
+  zoom?: number;
+  nonce: number;
+}
+
+export interface MapView {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+  zoom: number;
+}
+
 const props = withDefaults(
   defineProps<{
     stops: Stop[];
@@ -32,18 +62,41 @@ const props = withDefaults(
     shapes: MapShape[];
     /** Pans to this stop when it changes. */
     focusStopId?: string | null;
-    userPosition?: { lat: number; lon: number } | null;
+    userPosition?: MapUser | null;
+    /** Dims the dot: the fix is old enough that it may no longer be true. */
+    userStale?: boolean;
+    /** Armed for a point pick — the next tap on the map means "here". */
+    picking?: boolean;
+    pickedPoint?: MapPoint | null;
+    flyTo?: MapFlyTo | null;
+    /** Which `name:` tag the basemap labels streets from. */
+    lang?: string;
+    dark?: boolean;
     /** Milliseconds between polls — how long a bus has to glide to its new fix. */
     glideMs?: number;
     /** Room to leave at the bottom when flying to a stop, for the mobile sheet. */
     bottomInset?: number;
   }>(),
-  { focusStopId: null, userPosition: null, glideMs: 5000, bottomInset: 0 },
+  {
+    focusStopId: null,
+    userPosition: null,
+    userStale: false,
+    picking: false,
+    pickedPoint: null,
+    flyTo: null,
+    lang: "ru",
+    dark: false,
+    glideMs: 5000,
+    bottomInset: 0,
+  },
 );
 
 const emit = defineEmits<{
   selectStop: [id: string];
   selectVehicle: [id: string];
+  pickPoint: [point: MapPoint];
+  /** A view fact. What it means — "is the user's dot off screen" — is the page's business. */
+  viewChange: [view: MapView];
 }>();
 
 const $style = useCssModule();
@@ -58,6 +111,11 @@ const STOPS_FROM_ZOOM = 15;
 const PILL_FROM_ZOOM = 13;
 /** Only this close is there room for a glyph beside the number. */
 const GLYPH_FROM_ZOOM = 16;
+/**
+ * A halo wider than this stops being information and becomes a blue wash over
+ * the city, so it is clamped and the dot says "approximate" instead.
+ */
+const MAX_HALO_M = 750;
 
 const container = useTemplateRef<HTMLElement>("container");
 const zoom = ref(14);
@@ -68,14 +126,22 @@ const zooming = ref(false);
 const classes = computed(() => [
   $style.root,
   zoom.value < PILL_FROM_ZOOM ? $style.tierDot : $style.tierPill,
-  { [$style.tierGlyph]: zoom.value >= GLYPH_FROM_ZOOM, [$style.isZooming]: zooming.value },
+  {
+    [$style.tierGlyph]: zoom.value >= GLYPH_FROM_ZOOM,
+    [$style.isZooming]: zooming.value,
+    [$style.isPicking]: props.picking,
+  },
 ]);
 
 let map: L.Map | undefined;
+let basemap: ReturnType<typeof leafletLayer> | undefined;
 let shapeLayer: L.LayerGroup | undefined;
+let accuracyLayer: L.LayerGroup | undefined;
 let stopLayer: L.LayerGroup | undefined;
 let vehicleLayer: L.LayerGroup | undefined;
-let userMarker: L.CircleMarker | undefined;
+let userHalo: L.Circle | undefined;
+let userMarker: L.Marker | undefined;
+let pickedMarker: L.Marker | undefined;
 
 interface Painted {
   marker: L.Marker;
@@ -241,27 +307,143 @@ const drawVehicles = () => {
   }
 };
 
+/**
+ * "Me", in two pieces that belong to two different panes.
+ *
+ * The halo is `L.circle`, whose radius is in METRES and therefore scales with
+ * zoom; `circleMarker`'s radius is pixels, which would claim 40 m of accuracy at
+ * z18 and 4 km at z11 — the same number meaning something different at every
+ * zoom is worse than not drawing it.
+ *
+ * The dot is a marker, not a circle, because Leaflet's marker pane sits above
+ * the overlay pane unconditionally — as a `circleMarker` it could never clear a
+ * bus pill, and "which bus is nearest me" is the question it exists to answer.
+ *
+ * Nothing here moves the map. Deciding to fly because a fix arrived is app
+ * logic, and doing it in here is exactly why the dot could never be re-centred:
+ * the old code refused to fly a second time, by design.
+ */
 const drawUser = () => {
-  if (!map) return;
+  if (!map || !accuracyLayer) return;
 
-  if (!props.userPosition) {
+  const fix = props.userPosition;
+
+  if (!fix) {
+    userHalo?.remove();
     userMarker?.remove();
+    userHalo = undefined;
     userMarker = undefined;
     return;
   }
 
-  const at: L.LatLngExpression = [props.userPosition.lat, props.userPosition.lon];
+  const at: L.LatLngExpression = [fix.lat, fix.lon];
+  // A desktop network fix sometimes reports 0, and `L.circle` with radius 0
+  // renders nothing at all rather than nothing visible.
+  const halo = Number.isFinite(fix.accuracy) ? Math.min(fix.accuracy, MAX_HALO_M) : MAX_HALO_M;
+  const coarse = !Number.isFinite(fix.accuracy) || fix.accuracy > MAX_HALO_M;
 
-  if (userMarker) {
+  if (userHalo) {
+    userHalo.setLatLng(at);
+    userHalo.setRadius(halo);
+  } else if (halo > 0) {
+    userHalo = L.circle(at, { radius: halo, className: $style.accuracy, interactive: false }).addTo(
+      accuracyLayer,
+    );
+  }
+
+  if (!userMarker) {
+    userMarker = L.marker(at, {
+      icon: L.divIcon({ className: $style.userIcon, html: `<i class="${$style.userDot}"></i>`, iconSize: [0, 0] }),
+      interactive: false,
+      keyboard: false,
+      // Above the buses, which are at 1000.
+      zIndexOffset: 2000,
+    }).addTo(map);
+  } else {
     userMarker.setLatLng(at);
+  }
+
+  // Toggled on the element rather than through the icon: replacing a divIcon is
+  // the same mistake as `setIcon` on a vehicle — a new node, and the CSS state
+  // it was carrying goes with the old one.
+  const dot = userMarker.getElement()?.firstElementChild;
+  dot?.classList.toggle($style.isStale!, props.userStale);
+  dot?.classList.toggle($style.isCoarse!, coarse);
+};
+
+/** The tapped point. Drawn instantly — a fade would read as a tap that missed. */
+const drawPickedPoint = () => {
+  if (!map) return;
+
+  if (!props.pickedPoint) {
+    pickedMarker?.remove();
+    pickedMarker = undefined;
     return;
   }
 
-  userMarker = L.circleMarker(at, { radius: 7, weight: 3, className: $style.user }).addTo(map);
-  // Only on the first fix. Pressing "my location" and being shown a dot
-  // somewhere off screen is the same as being shown nothing — but a later fix
-  // must not yank the map away from wherever the reader has panned to.
-  map.flyTo(at, Math.max(map.getZoom(), 15), { duration: 0.8 });
+  const at: L.LatLngExpression = [props.pickedPoint.lat, props.pickedPoint.lon];
+
+  if (pickedMarker) {
+    pickedMarker.setLatLng(at);
+    return;
+  }
+
+  pickedMarker = L.marker(at, {
+    icon: L.divIcon({ className: $style.pickIcon, html: `<i class="${$style.pickDot}"></i>`, iconSize: [0, 0] }),
+    // Never interactive: a marker that ate the next tap would make a second
+    // pick at the same place impossible.
+    interactive: false,
+    keyboard: false,
+    zIndexOffset: 1500,
+  }).addTo(map);
+};
+
+/**
+ * The basemap: our own `.pmtiles` cut of Batumi, rendered to canvas by
+ * protomaps-leaflet. Raster tiles could only ever be labelled in one language —
+ * Georgian — and every localized raster service is either keyed or, in
+ * Wikimedia's case, a hard 403 for anyone outside their projects. A vector cut
+ * we host ourselves has no provider and no key, which is the condition the
+ * recorded rejection of vector tiles was actually about.
+ *
+ * `lang` picks the `name:<lang>` tag and falls back to `name`, so Georgian is
+ * served by the fallback rather than a translation — `name` is what is painted
+ * on the street sign, which is the right answer for `ka`.
+ *
+ * Rebuilt rather than mutated on a change: the alternative reaches into the
+ * layer's `paintRules`/`labelRules` and needs a Flavor object out of a package
+ * we only have transitively. Locale and theme change on a deliberate press, so
+ * a rebuild costs nothing anyone can feel — and swapping a Leaflet layer is a
+ * Leaflet operation, not a Vue patch on Leaflet's DOM.
+ */
+const drawBasemap = () => {
+  if (!map) return;
+
+  basemap?.remove();
+  basemap = leafletLayer({
+    url: `${import.meta.env.BASE_URL}tiles/batumi.pmtiles`,
+    flavor: props.dark ? "dark" : "light",
+    lang: props.lang,
+    // The archive stops at z15 and the renderer overzooms above it; because it
+    // is vector, the labels stay sharp rather than turning to porridge.
+    maxDataZoom: 15,
+    attribution:
+      '<a href="https://protomaps.com">Protomaps</a> &copy; ' +
+      '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  });
+  basemap.addTo(map);
+};
+
+const reportView = () => {
+  if (!map) return;
+  const bounds = map.getBounds();
+  emit("viewChange", {
+    south: bounds.getSouth(),
+    west: bounds.getWest(),
+    north: bounds.getNorth(),
+    east: bounds.getEast(),
+    zoom: map.getZoom(),
+  });
 };
 
 onMounted(() => {
@@ -278,15 +460,14 @@ onMounted(() => {
     attributionControl: true,
   });
 
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    // "contributors" is not decoration — it is the wording ODbL attribution asks for.
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(map);
+  drawBasemap();
 
   L.control.zoom({ position: "bottomright" }).addTo(map);
 
+  // Insertion order is paint order within the overlay pane, so the halo goes in
+  // before the stops — a translucent disc over a stop dot hides it.
   shapeLayer = L.layerGroup().addTo(map);
+  accuracyLayer = L.layerGroup().addTo(map);
   stopLayer = L.layerGroup().addTo(map);
   vehicleLayer = L.layerGroup().addTo(map);
 
@@ -298,10 +479,19 @@ onMounted(() => {
     zoom.value = map?.getZoom() ?? zoom.value;
     drawStops();
     drawVehicles();
+    reportView();
   });
   map.on("moveend", () => {
     drawStops();
     drawVehicles();
+    reportView();
+  });
+
+  map.on("click", (event) => {
+    // Which gesture means what is the map's business; what a point is *for* is
+    // not, so the coordinate goes out and the component learns nothing else.
+    if (!props.picking) return;
+    emit("pickPoint", { lat: event.latlng.lat, lon: event.latlng.lng });
   });
 
   zoom.value = map.getZoom();
@@ -309,6 +499,8 @@ onMounted(() => {
   drawStops();
   drawVehicles();
   drawUser();
+  drawPickedPoint();
+  reportView();
 });
 
 // Leaflet caches its container's size and only re-reads it on a *window*
@@ -335,9 +527,31 @@ watch(() => props.shapes, drawShapes, { deep: true });
 watch(() => props.stops, drawStops);
 watch(() => props.vehicles, drawVehicles);
 watch(() => props.userPosition, drawUser);
+watch(() => props.userStale, drawUser);
+watch(() => props.pickedPoint, drawPickedPoint);
 watch(
   () => props.glideMs,
   (ms) => container.value?.style.setProperty("--glide", `${ms}ms`),
+);
+
+// Leaflet fires `click` on the first tap of a double-tap-to-zoom, so a pick
+// could land because someone was zooming rather than choosing.
+watch(
+  () => props.picking,
+  (armed) => (armed ? map?.doubleClickZoom.disable() : map?.doubleClickZoom.enable()),
+);
+
+watch(() => [props.lang, props.dark], drawBasemap);
+
+// The page asks for a move; the nonce is what lets it ask for the same place
+// twice, which is exactly what "centre on me again" is.
+watch(
+  () => props.flyTo?.nonce,
+  () => {
+    const target = props.flyTo;
+    if (!map || !target) return;
+    map.flyTo([target.lat, target.lon], target.zoom ?? Math.max(map.getZoom(), 16), { duration: 0.8 });
+  },
 );
 
 watch(
@@ -423,14 +637,26 @@ watch(
     }
   }
 
-  // OSM ships one set of raster tiles and they are light. Inverting the tile
-  // pane alone — not the markers drawn over it — is what keeps a dark map from
-  // turning every route colour into its complement. Desaturated and dimmed a
-  // little further than a straight inversion, so the map recedes and the route
-  // colours are what lead.
-  #{design.$darkThemeSelector} & :global(.leaflet-tile-pane) {
-    filter: invert(1) hue-rotate(180deg) brightness(0.86) contrast(0.88) saturate(0.55);
+  // Armed for a point pick. The crosshair has to beat Leaflet's own
+  // .leaflet-grab, which is why these are as specific as they are.
+  &.isPicking :global(.leaflet-container),
+  &.isPicking :global(.leaflet-grab) {
+    cursor: crosshair;
   }
+
+  // While armed, every tap means "here" — including one that lands on a stop dot
+  // or a bus pill. Making the two panes inert is one rule; branching every
+  // marker's click handler would be twelve. The controls live in their own pane,
+  // so zooming still works — picking a point you cannot see is not picking.
+  &.isPicking :global(.leaflet-overlay-pane),
+  &.isPicking :global(.leaflet-marker-pane) {
+    pointer-events: none;
+  }
+
+  // No dark-mode filter here any more. The raster basemap had exactly one set of
+  // tiles, both light, so dark meant inverting the tile pane and living with a
+  // hue-rotate; the vector basemap ships a real dark flavor, and it is rendered
+  // rather than filtered, so the route colours over it stay the colours we chose.
 }
 
 // Every SVG colour below is a CSS property, not a presentation attribute — a
@@ -469,11 +695,59 @@ watch(
   filter: drop-shadow(0 1px 3px var(--stop-selected-shadow));
 }
 
-.user {
-  stroke: var(--user-ring);
-  fill: var(--user-fill);
+// The halo is the honest part of "you are here": it is drawn at the accuracy the
+// device reported, in metres, so it grows when the fix is poor instead of a dot
+// silently asserting the same precision either way. Its radius is never
+// animated — an expanding circle reads as a loop, and _motion.scss allows one.
+.accuracy {
+  stroke: var(--user-accuracy-ring);
+  stroke-width: 1;
+  fill: var(--user-accuracy-fill);
   fill-opacity: 1;
   pointer-events: none;
+}
+
+// Leaflet owns the marker's transform, so the dot inside does the centring —
+// the same split as the vehicle pill.
+.userIcon,
+.pickIcon {
+  pointer-events: none;
+}
+
+.userDot {
+  display: block;
+  transform: translate(-50%, -50%);
+  width: design.spacing(3.5);
+  height: design.spacing(3.5);
+  border: 3px solid var(--user-ring);
+  border-radius: 50%;
+  background-color: var(--user-fill);
+  box-shadow: design.shadow(sm);
+  transition: opacity motion.$standard motion.$ease-micro;
+}
+
+// Old enough that it may no longer be true. Opacity only: no size change and no
+// pulse, because a second looping thing would devalue the one live pulse.
+.isStale {
+  opacity: 0.45;
+}
+
+// Too vague to point at a particular pole, so the dot stops pretending to.
+.isCoarse {
+  border-style: dashed;
+  background-color: transparent;
+}
+
+// A picked point is neither a stop nor a bus, so it is the map's neutral ink
+// rather than a twenty-ninth colour.
+.pickDot {
+  display: block;
+  transform: translate(-50%, -50%);
+  width: design.spacing(4);
+  height: design.spacing(4);
+  border: 2px dashed var(--pick-ring);
+  border-radius: 50%;
+  background-color: var(--pick-fill);
 }
 
 // The element Leaflet mounts into. Nothing reactive is bound to it.
@@ -590,6 +864,10 @@ watch(
   // worse for a motion-sensitive reader than one that moves smoothly. Only the
   // turn is dropped.
   .nose {
+    transition: none;
+  }
+
+  .userDot {
     transition: none;
   }
 }

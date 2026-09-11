@@ -85,7 +85,15 @@ export const messages = {
   nearMe: { ru: 'Рядом', ka: 'ჩემთან ახლოს', en: 'Nearby' },
   nearbyStops: { ru: 'Остановки рядом', ka: 'ახლომდებარე გაჩერებები', en: 'Stops near you' },
   locating: { ru: 'Определяем местоположение…', ka: 'მდებარეობის დადგენა…', en: 'Locating…' },
-  locationDenied: { ru: 'Местоположение недоступно', ka: 'მდებარეობა მიუწვდომელია', en: 'Location unavailable' },
+  // Three codes, three situations, and only one of them is the reader's doing.
+  // One string for all three told someone in a tunnel that they had said no.
+  locationDenied: { ru: 'Доступ к местоположению запрещён', ka: 'მდებარეობაზე წვდომა აკრძალულია', en: 'Location access is blocked' },
+  locationTimeout: {
+    ru: 'Не удалось определить местоположение — попробуйте ещё раз',
+    ka: 'მდებარეობა ვერ დადგინდა — სცადეთ ხელახლა',
+    en: 'Could not get a fix — try again',
+  },
+  locationUnavailable: { ru: 'Местоположение недоступно', ka: 'მდებარეობა მიუწვდომელია', en: 'Location unavailable' },
   metresAway: { ru: 'м', ka: 'მ', en: 'm' },
   kilometresAway: { ru: 'км', ka: 'კმ', en: 'km' },
   walkMinutes: { ru: 'мин пешком', ka: 'წთ ფეხით', en: 'min walk' },
@@ -128,6 +136,52 @@ export const messages = {
     ka: 'მარშრუტები ამ გაჩერებაზე',
     en: 'Routes through this stop',
   },
+
+  // Seeing yourself on the map.
+  centreOnMe: { ru: 'Показать, где я', ka: 'ჩემს მდებარეობაზე', en: 'Centre on me' },
+  accuracyLabel: { ru: 'Точность', ka: 'სიზუსტე', en: 'Accuracy' },
+  locationStale: {
+    ru: 'Местоположение могло устареть',
+    ka: 'მდებარეობა შესაძლოა მოძველებული იყოს',
+    en: 'Your position may be out of date',
+  },
+  coarseFix: {
+    ru: 'Местоположение определено неточно — список может быть неверным',
+    ka: 'მდებარეობა არაზუსტია — სია შეიძლება არასწორი იყოს',
+    en: 'Your position is only approximate — this list may be off',
+  },
+
+  // The nearest stop, offered without being asked for.
+  nearestStop: { ru: 'Ближайшая остановка', ka: 'უახლოესი გაჩერება', en: 'Nearest stop' },
+  openNearestStop: {
+    ru: 'Открыть ближайшую остановку',
+    ka: 'უახლოესი გაჩერების გახსნა',
+    en: 'Open the nearest stop',
+  },
+  // «Скрыть» puts a suggestion away; «Закрыть» shuts a panel. Two different
+  // acts, and a Russian reader hears the difference.
+  dismiss: { ru: 'Скрыть', ka: 'დამალვა', en: 'Dismiss' },
+  refreshLocation: { ru: 'Обновить местоположение', ka: 'მდებარეობის განახლება', en: 'Refresh location' },
+
+  // Picking a point on the map.
+  pickOnMap: { ru: 'Указать точку на карте', ka: 'წერტილის არჩევა რუკაზე', en: 'Pick a point on the map' },
+  pickOnMapCancel: { ru: 'Отменить выбор точки', ka: 'არჩევის გაუქმება', en: 'Cancel picking' },
+  pickOnMapHint: {
+    ru: 'Нажмите на карту — покажем остановки рядом с этой точкой',
+    ka: 'შეეხეთ რუკას — გაჩვენებთ ამ წერტილთან ახლოს მდებარე გაჩერებებს',
+    en: 'Tap the map and we’ll show the stops near that point',
+  },
+  stopsNearPoint: { ru: 'Остановки рядом с точкой', ka: 'გაჩერებები ამ წერტილთან', en: 'Stops near this point' },
+  noStopsNearPoint: {
+    ru: 'Рядом с этой точкой остановок нет',
+    ka: 'ამ წერტილთან ახლოს გაჩერება არ არის',
+    en: 'No stops near this point',
+  },
+  cancel: { ru: 'Отмена', ka: 'გაუქმება', en: 'Cancel' },
+
+  // Getting back to where the stop was chosen from.
+  backToNearby: { ru: 'К остановкам рядом', ka: 'ახლომდებარე გაჩერებებზე', en: 'Back to stops near you' },
+  backToPickedPoint: { ru: 'К выбранной точке', ka: 'არჩეულ წერტილზე', en: 'Back to the picked point' },
 
   toggleTheme: { ru: 'Сменить тему', ka: 'თემის შეცვლა', en: 'Toggle theme' },
   toggleSidebar: { ru: 'Показать панель', ka: 'პანელის ჩვენება', en: 'Toggle sidebar' },

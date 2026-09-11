@@ -99,8 +99,75 @@ jobs:
       - name: Add the Android platform
         run: npx cap add android
 
+      # `cap add android` regenerates android/ from Capacitor's own template on
+      # every run, and that template's whole permission set is INTERNET — there
+      # is no capacitor.config.json field that can add to it. Undeclared means
+      # Android refuses the request outright without ever drawing a dialog, so
+      # /nearby looks exactly as though the user had said no. Capacitor's bridge
+      # already asks on our behalf when the WebView prompts
+      # (BridgeWebChromeClient.onGeolocationPermissionsShowPrompt launches
+      # COARSE and FINE together), so declaring them here is the whole fix — no
+      # plugin, no app code. @capacitor/geolocation would not supply them
+      # either: its own android manifest is empty in every published major.
+      - name: Declare location permissions in the generated manifest
+        shell: node {0}
+        run: |
+          const fs = require("fs");
+          const path = "./android/app/src/main/AndroidManifest.xml";
+          const content = fs.readFileSync(path, "utf8");
+
+          // The template's only permission, and so our anchor: if it moves, the
+          // manifest has changed shape and this patch wants re-reading rather
+          // than skipping.
+          const anchor = `<uses-permission android:name="android.permission.INTERNET" />`;
+          const declarations = [
+            // Both, never FINE on its own: Android 12 ignores a FINE-only
+            // runtime request, and it is COARSE that makes the dialog's
+            // "Approximate" answer grantable instead of a silent refusal.
+            `<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />`,
+            `<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />`,
+            // Either permission implies android.hardware.location at every
+            // target level, and an implied feature is a required one, which is
+            // a hard Play Store filter. Susanin is a timetable first and
+            // /nearby is one page of it, so a phone with poor location hardware
+            // should still be able to install it — hence required="false" on
+            // all three. The .gps/.network pair is not implied above API 20,
+            // but Android's docs ask an app requesting these permissions to
+            // declare it anyway.
+            `<uses-feature android:name="android.hardware.location" android:required="false" />`,
+            `<uses-feature android:name="android.hardware.location.gps" android:required="false" />`,
+            `<uses-feature android:name="android.hardware.location.network" android:required="false" />`,
+          ].map((line) => "    " + line).join("\n");
+
+          const replaced = content.replace(anchor, anchor + "\n\n" + declarations);
+          if (replaced === content) {
+            console.error("::error::INTERNET uses-permission not found in " + path + " — the Capacitor template changed shape.");
+            process.exit(1);
+          }
+          fs.writeFileSync(path, replaced);
+
       - name: Sync files
         run: npx cap sync android
+
+      # Same reasoning as the API base check, and placed after the sync so that
+      # it also proves the sync left the patch alone.
+      - name: Check the location permissions landed in the manifest
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          for permission in ACCESS_COARSE_LOCATION ACCESS_FINE_LOCATION; do
+            if ! grep -qF "android.permission.$permission" "$MANIFEST"; then
+              echo "::error::$permission is missing from $MANIFEST — /nearby would be dead in the packaged app."
+              exit 1
+            fi
+          done
+          # A <uses-feature> is a required one unless it says otherwise, and a
+          # required feature is invisible here and a missing install on a cheap
+          # phone.
+          if grep "uses-feature" "$MANIFEST" | grep -qv 'android:required="false"'; then
+            echo "::error::a <uses-feature> in $MANIFEST is missing android:required=\"false\" — that filters devices out on the Play Store."
+            exit 1
+          fi
+          echo "Location permissions present in the generated manifest."
 
       - name: Build app bundle
         run: cd android && gradle bundle

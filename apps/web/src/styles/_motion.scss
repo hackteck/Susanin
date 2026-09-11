@@ -9,7 +9,12 @@
 //   - route polylines never animate — 28 of them under a flowing dash would
 //     hold the compositor awake and drain exactly the phone this runs on
 //   - markers never animate during a zoom, which rewrites every transform at once
-//   - nothing loops except the single live pulse
+//   - nothing loops except the single live pulse — in particular the user's dot
+//     never pulses and the accuracy halo's radius never animates, both of which
+//     would read as a second heartbeat competing with the live arrival row
+//   - a picked point appears instantly; a fade there reads as a tap that missed
+//   - the stop sheet slides in and out, but its contents swap without animating —
+//     a list becoming an arrival board is a page transition in a panel's clothes
 
 /** State flips and hover. */
 $instant: 100ms;

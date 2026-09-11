@@ -1,0 +1,37 @@
+{
+  // Vercel's function builder walks up from api/index.ts with ts.findConfigFile,
+  // so it finds *this* file and never apps/api/tsconfig.json — which is why
+  // `npm run typecheck` can be green while the deploy fails on TS5097. Keep it
+  // in step with apps/api/tsconfig.json, and no stricter, so CI stays the gate.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    // names.data.json is generated and imported with a type attribute.
+    "resolveJsonModule": true,
+
+    // Deliberately not `allowImportingTsExtensions`, which is the obvious fix
+    // and a trap: the builder forces `noEmit` off and renames every compiled
+    // .ts to .js, so an import of './config.ts' surviving into the output is
+    // ERR_MODULE_NOT_FOUND at runtime — a green build and a 500 in production.
+    // Rewriting the specifier is what the builder's own TypeScript expects.
+    "rewriteRelativeImportExtensions": true,
+
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "strict": true,
+    "skipLibCheck": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Ignored by the builder, which compiles with its own outDir. It is here so
+    // that running tsc at the root checks rather than scattering .js beside .ts.
+    "noEmit": true
+  },
+
+  // Only the API. Without this the root config globs apps/web too, and tsc here
+  // would report errors from Vue's types against Node's lib.
+  "include": ["api/**/*.ts", "apps/api/src/**/*.ts"]
+}

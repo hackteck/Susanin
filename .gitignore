@@ -35,3 +35,9 @@ dist-ssr
 
 # Cached copy of the real dataset, pulled once by tools/stub-upstream.mjs.
 tools/stub-db.json
+
+# The basemap. `npm run basemap` cuts it out of a pinned Protomaps planet build
+# and caches the go-pmtiles CLI that does the cutting; tools/build-basemap.mjs is
+# what is committed, not its 6 MB of tiles or a 59 MB binary.
+/apps/web/public/tiles/
+/.cache/

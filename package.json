@@ -11,6 +11,7 @@
     "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm run dev --workspace @susanin/api",
     "dev:web": "npm run dev --workspace @susanin/web",
+    "basemap": "node tools/build-basemap.mjs",
     "build": "npm run build --workspace @susanin/api && npm run build --workspace @susanin/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"

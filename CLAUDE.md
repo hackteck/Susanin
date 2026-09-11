@@ -205,8 +205,28 @@ what a cheap translation looks like.
 The names are the harder half. Seven stops in ten (407 of 578) have no Latin
 name at all, so
 a Russian reader would otherwise see Georgian script for the stop they are
-standing at. `api/src/domain/translit.ts` therefore renders Georgian into
-Cyrillic at network-build time: 33 letters, one pass, cached with the dataset.
+standing at. **Names come from OpenStreetMap, and transliteration is only the fallback.** This
+was the second attempt. Sounding a name out gets a reader to the right syllables
+and the wrong words: `ანდრიაპირველწოდებული ქუჩა` came out «Улица
+Андриапирвелцодебули», where the street sign, Yandex and Google all say «Шоссе
+Андрея Первозванного». `იუსტიციის სახლი` came out «Иустициис Сахли» rather than
+«Дом Юстиции». Neither is a phrase anyone could repeat to a driver.
+
+OSM turned out to carry `name:ru` and `name:en` across Batumi, as translations
+rather than transliteration, and `tools/build-names.mjs` bakes them into
+`api/src/domain/names.data.json` — 176 street-level keys covering **578 of 578
+poles**. The table is keyed by the street, not the pole, because the feed
+distinguishes poles with a trailing house number and 578 poles share 176 names
+once it is taken off; the number is put back afterwards, since it is how someone
+standing there knows which pole they are at. That number is itself transliterated
+for Russian: Batumi subdivides with a Georgian letter (`№3ა`), and appending it
+raw left Georgian script inside a Russian string on 5 poles. The house-number
+rule is anchored at the *end* — a leading `№23` is a school's number and part of
+its name.
+
+`api/src/domain/translit.ts` is still there and still matters: it renders Georgian
+into Cyrillic for anything OSM has never mapped, so a stop nobody has added does
+not fall back to Georgian script. 33 letters, one pass, cached with the dataset.
 It is **transliteration, not translation** — it collides the aspirated pairs
 (თ/ტ → т, ქ/კ → к), which is fine for matching a name against a pole. The one
 thing it does translate is a short list of nouns that recur across hundreds of
@@ -266,9 +286,40 @@ publish only after review. Don't patch around it in this app.
 
 ## Map
 
-**Leaflet with OpenStreetMap raster tiles.** No API key, no vendor account, and
-attribution is a link. MapLibre was the alternative and was rejected: vector
-tiles need a keyed provider, which this app has no way to pay for. The map is
+**Leaflet with a self-hosted Protomaps vector basemap.** No API key and no vendor
+account, which was always the constraint — the earlier note here rejected vector
+tiles because they "need a keyed provider", and that was right about *providers*.
+The tiles are now our own file: `npm run basemap` cuts a 5.85 MiB `.pmtiles`
+archive of the network's bounding box out of a pinned Protomaps planet build and
+`protomaps-leaflet` renders it to canvas inside the same Leaflet map. Leaflet
+stays, and so do all three of the lessons below.
+
+The reason it is worth a tile pipeline at all is **language**. Raster OSM tiles
+are labelled in Georgian and in nothing else, so a Russian reader — the default
+locale, and most of this app's audience — got the UI in Russian and every street
+name in a script they cannot read. Measured on the harvest: `name:ru` is present
+on 1556 of 1556 named Batumi ways, `name:en` on 1554. `protomaps-leaflet` reads
+`name:<lang>` and falls back to `name`, so `ru` and `en` get real translations
+and `ka` gets the local name — which is what is painted on the sign, and
+therefore the right answer rather than a missing one. Georgian glyphs render
+because the app already loads Noto Sans Georgian and the renderer draws with
+ordinary web fonts; no SDF glyph server, no font pipeline.
+
+MapLibre is still rejected, now for a second reason: its styles hide scripts it
+cannot shape, and Georgian is one of them.
+
+Wikimedia's localized `osm-intl` tiles are not an option and should not be
+re-probed — they are a hard **403 at the CDN** for anyone outside Wikimedia
+projects, not a rate limit.
+
+The dark map is now a real dark *flavor* rather than a CSS `invert(1)
+hue-rotate(180deg)` over the tile pane, so the 28 route hues sit on it as the
+colours they were chosen to be.
+
+The archive is generated, gitignored and never committed; `tools/build-basemap.mjs`
+is what is committed, it pins the planet build date, and it fails loudly rather
+than shipping a file that is the right size and the wrong language — it decodes a
+Batumi tile and asserts `name:ru` is really on the roads. The map is
 not a surstromming component and never will be — it's an app concern.
 
 Leaflet is imperative and owns its DOM subtree, so it is wrapped in exactly one
@@ -292,6 +343,21 @@ Leaflet owns real DOM, and a declarative framework must keep its hands off it:
 - **Leaflet only re-reads its size on a *window* resize.** The sidebar
   collapsing is not one. A `ResizeObserver` on the container calls
   `invalidateSize`.
+
+**"You are here" is two things in two panes, and the split is load-bearing.** The
+accuracy halo is an `L.circle`, whose radius is in **metres** and therefore
+scales with zoom; a `circleMarker`'s radius is pixels, which would claim 40 m of
+accuracy at z18 and 4 km at z11. The dot is a marker rather than a circle,
+because Leaflet's marker pane sits above the overlay pane unconditionally — as a
+circle it could never clear a bus pill, and "which bus is nearest me" is the
+question it exists to answer. The map itself never decides to fly: that was app
+logic living in the component, and it is why the dot could only ever be centred
+once — the old code refused a second fix by design, so panning away lost it for
+good. The page now asks, through a `flyTo` prop carrying a nonce, which is what
+lets it ask for the same place twice. On the map page only, the fix is a
+`watchPosition` that pauses with the tab and stops with the page: a dot beside a
+live bus is a claim the app has to keep true, and a stale one is wrong in the
+same way a cached bus would be.
 
 The vehicle marker is a coloured pill carrying the route number — the number is
 the bus's identity, and a generic glyph would say less — with a nose on its
@@ -372,6 +438,21 @@ from the web build, and both are easy to get wrong:
 - **CORS.** The packaged app *is* cross-origin, so `https://localhost` and
   `capacitor://localhost` are in the API's default `allowedOrigins`.
 
+- **Location permissions are patched into the generated manifest.** Capacitor's
+  template declares `INTERNET` and nothing else, `cap add android` regenerates
+  `android/` on every run, and `capacitor.config.json` has no field that can add
+  a permission. Undeclared is worse than it sounds: Android refuses the request
+  **without drawing a dialog**, so the packaged app looks exactly as though the
+  user had said no, and `/nearby` is silently dead. Capacitor's own bridge
+  already asks on the app's behalf when the WebView prompts, so the declaration
+  is the entire fix — `@capacitor/geolocation` would not help, because its
+  Android manifest is empty in every published major. `ACCESS_COARSE_LOCATION`
+  goes in beside `ACCESS_FINE_LOCATION`: Android 12 ignores a fine-only runtime
+  request. Every `uses-feature` carries `required="false"`, because an implied
+  feature is a required one and a required one is a Play Store device filter —
+  this is a timetable first, and it should install on a phone with poor location
+  hardware.
+
 The keystore in that workflow is a throwaway for an unpublishable build. A real
 release needs a keystore held as a secret; that is deliberately not wired up,
 because a signing key that lives in a workflow file is not a signing key.
@@ -395,8 +476,28 @@ Two ways, both entirely client-side over the 578 stops already in the store:
   drawn last so it sits above the ordinary stop that may be metres away, and at
   **every** zoom: a highlight that vanishes on zooming out while its arrival
   panel stays open reads as the map losing track of it.
-- **Nearby** (`/nearby`) sorts stops by straight-line distance from a one-shot
-  geolocation fix, capped at 1.2 km. It says **"straight-line"** in the UI and
+- **Point at the map instead.** The pole number and the name are both things you
+  have to know; a place on a map is not. The search field carries a pin toggle
+  that arms the map, and the next tap answers with the stops nearest that point.
+  While armed the overlay and marker panes are made inert — one rule, rather
+  than branching twelve marker handlers — and `doubleClickZoom` is disabled,
+  because Leaflet fires `click` on the first tap of a double-tap and a pick that
+  lands because someone was zooming is a pick nobody made. The control pane is
+  untouched, so zooming still works: picking a point you cannot see is not
+  picking.
+
+- **Where a stop was chosen from is app state, not history.** `stores/proximity`
+  holds an `origin` — `me`, a picked point, or nothing — set only by a proximity
+  list and cleared by every other route into a stop. It is what the back arrow
+  in the map sheet and the back row on the stop page are derived from, so a
+  reloaded or shared link behaves like a tap rather than guessing from
+  `history.length`. It is deliberately **not** persisted: "where you were a
+  moment ago" is not a preference, and a back arrow pointing at last Tuesday's
+  picked point is worse than no arrow. The same store is why a fix taken on the
+  map is still there on `/nearby` — two page-local copies of it was the single
+  fact behind three separate complaints.
+
+- **Nearby** (`/nearby`) sorts stops by straight-line distance, capped at 1.2 km. It says **"straight-line"** in the UI and
   means it — Batumi has a river, a rail line and a port, and there is no
   pedestrian graph here to route around them. Distance leads the row, because at
   a kerb "how far" is the question and the name only matters once you have
@@ -423,7 +524,43 @@ prebuilt flow (`link --project <package.json name>` → `pull` → `build --prod
   `/api/health` on the new URL. A 503 is a warning, not a failure: that is the
   feed's night-time state, not a bad deploy.
 
-Two settings that are easy to get wrong:
+- **The smoke test goes through `vercel curl`, not through `curl`.** Vercel's
+  Standard Protection — the only tier on the free plan — protects the generated
+  `susanin-<hash>.vercel.app` deployment URL and leaves only the production
+  domain public, so a plain curl at the thing we just deployed reaches a login
+  page rather than the API. `vercel curl --deployment <url> /api/health` carries
+  the protection bypass itself: no alias to resolve, no bypass secret in the
+  repo, and nothing scraped out of the CLI's output. The first fix for this did
+  recover the production alias — out of `vercel inspect --json`, with the deploy
+  log's `Aliased` row as a fallback — and asking the CLI to make the request is
+  simply better than asking it where to send one.
+
+  Two consequences worth knowing. It smoke-tests **the deployment, not
+  production**, so it no longer notices a deploy that succeeded and was never
+  promoted; that failure is loud in the dashboard, whereas a broken function is
+  not, so this is the right way round. And `vercel curl` is beta, so the check
+  deliberately does not trust it: the branch is on **our own health payload**,
+  never on an exit code or a status line. A login interstitial is HTML and
+  answers 200, so a status code was never the real signal anyway; and if the
+  command breaks outright the body is empty and the step fails. A 503 is still
+  only a warning, but only when the body is *our* `degraded` — a platform 503 is
+  a crashed function, not Batumi's feed being asleep.
+
+Three settings that are easy to get wrong:
+
+- **There is a `tsconfig.json` at the repo root, and it exists solely for
+  Vercel.** The function builder walks up from `api/index.ts` with
+  `ts.findConfigFile`, so it finds the root config and never
+  `apps/api/tsconfig.json` — which is why `npm run typecheck` was green while
+  every deploy failed with TS5097 on the `.ts` import extensions. Those
+  extensions are load-bearing (`node --experimental-strip-types` and
+  `node --test` both need them) so they stay. The obvious fix,
+  `allowImportingTsExtensions`, is a **trap**: the builder forces `noEmit` off
+  and renames every compiled `.ts` to `.js`, so a surviving `'./config.ts'`
+  import is `ERR_MODULE_NOT_FOUND` — a green build and a 500 in production.
+  `rewriteRelativeImportExtensions` is the one that survives, because it rewrites
+  the specifier at emit. There is no `tsconfig` escape hatch in `vercel.json`;
+  the schema has no such field.
 
 - **`functions.maxDuration` must exceed `UPSTREAM_TIMEOUT_MS`.** A cold
   invocation fetches the whole 1.27 MB dataset before it can answer anything.

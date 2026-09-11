@@ -5,6 +5,8 @@
     "types": ["node"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
+    // names.data.json is generated and imported with a type attribute.
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
