@@ -529,12 +529,50 @@ const HAND = {
     why: 'the street comes from OSM; the bracket says this pole is the terminus and is worth keeping',
   },
   'წმ. სევერიან აჭარელის ქუჩა.(ავტოსადგური)': {
-    ru: 'Улица Цминда Севериане Ачарели (автовокзал)', en: 'Tsminda Severiane Achareli Street (bus station)', src: 'osm:წმინდა სევერიანე აჭარელის ქუჩა',
+    ru: 'Улица Святого Севериана Ачарели (автовокзал)', en: 'St Severiane Achareli Street (bus station)', src: 'osm:წმინდა სევერიანე აჭარელის ქუჩა',
     why: 'as above — the street from OSM, the bracket kept because it says which pole this is',
   },
   'წმ. სევერიან აჭარელის ქუჩა №1(ავტოსადგური)': {
-    ru: 'Улица Цминда Севериане Ачарели (автовокзал)', en: 'Tsminda Severiane Achareli Street (bus station)', src: 'osm:წმინდა სევერიანე აჭარელის ქუჩა',
+    ru: 'Улица Святого Севериана Ачарели (автовокзал)', en: 'St Severiane Achareli Street (bus station)', src: 'osm:წმინდა სევერიანე აჭარელის ქუჩა',
     why: 'same pole, spelled with a house number glued to the bracket, so the number rule leaves it alone',
+  },
+
+  // --- OSM tagged the same name twice and the majority tag is the worse one -
+  // `harvestOsm` keeps the spelling the most objects agree on, which is right
+  // when the disagreement is a typo and wrong when it is a translation against
+  // a transliteration: the crowd is simply bigger on the older tagging.
+  'წმ. სევერიან აჭარელის ქუჩა': {
+    ru: 'Улица Святого Севериана Ачарели', en: 'St Severiane Achareli Street', src: 'osm:წმინდა სევერიანე აჭარელის ქუჩა',
+    why: 'OSM carries both "улица Цминда Севериане Ачарели" and "улица Святого Севериана Ачарели" on ways of this name, and the transliteration wins on object count; წმინდა is the common noun "saint", which is exactly the kind of word this table exists to translate — the feed even abbreviates it to წმ., the way Russian writes св.',
+  },
+
+  // --- the feed's spelling matched a sibling object, not the network's name --
+  // Each of these has a correctly spelled sibling pole on the same street that
+  // OSM answers differently, so left alone the app labels one street two ways
+  // depending on which pole the reader is standing at.
+  'მე-8 საჯარო სკოლა': {
+    ru: 'Публичная школа №8', en: 'Public School #8', src: 'osm:№8 საჯარო სკოლა',
+    why: 'OSM maps this school twice — "მე-8 საჯარო სკოლა" tagged "Школа №8" and "№8 საჯარო სკოლა" tagged "Публичная школа №8"; the ten other schools on this network read the latter',
+  },
+  'მე-11 საჯარო სკოლა': {
+    ru: 'Публичная школа №11', en: 'Public School #11', src: 'osm:№11 საჯარო სკოლა',
+    why: 'as №8 — the short tagging won the count; the long one OSM also carries is "Батумская государственная школа №11 имени Акакия Церетели", which is a legal name and not what the pole says',
+  },
+  'ტბელ აბუსერიძის ქუჩა': {
+    ru: 'Улица Тбел Абусеридзе', en: 'Tbel Abuseridze Street', src: 'osm:ტბელ აბუსერისძის ქუჩა',
+    why: 'the feed drops the ს of აბუსერისძე and the fuzzy match landed on an OSM object spelling the surname "Абуселидзе"; the poles that spell it correctly read "Абусеридзе", and so does the church of the same saint',
+  },
+  'გიორი ლეონიძის ქუჩა': {
+    ru: 'Улица Георгия Леонидзе', en: 'Giorgi Leonidze Street', src: 'osm:გიორგი ლეონიძის ქუჩა',
+    why: 'the feed misspells გიორგი, so the loose match reached the bare "ლეონიძის ქუჩა" in OSM and dropped the first name the sibling poles carry',
+  },
+  'ვლადიმერ მაიაკოვსკის ქუჩა': {
+    ru: 'Улица Владимира Маяковского', en: 'Vladimir Mayakovsky Street', src: 'osm:ვლადიმირ მაიაკოვსკის ქუჩა',
+    why: 'the feed writes ვლადიმერ for ვლადიმირ and the loose match reached the bare "მაიაკოვსკის ქუჩა"; OSM names the street in full, as it does the three dead ends off it',
+  },
+  'მიხეილ ლერმონთოვის ქუჩა': {
+    ru: 'Улица Михаила Лермонтова', en: 'Mikhail Lermontov Street', src: 'osm:მიხეილ ლერმონტოვის ქუჩა',
+    why: 'the feed writes თ for ტ; the pole that spells it correctly is matched exactly and reads "Улица Михаила Лермонтова"',
   },
 }
 

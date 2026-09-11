@@ -26,6 +26,16 @@ const names: Record<string, { ru: string; en: string }> = table.names
  */
 const HOUSE_NUMBER = /[№#]+\s*(\d+\S*)\s*$/
 
+/**
+ * The feed spells the pole number both "№3" and "#3" — 308 of 578 names use the
+ * hash — and the table is keyed the first way, because `nameKey` in
+ * tools/build-names.mjs normalises it at build time. Doing the same here is what
+ * lets a whole name match the table directly; without it every hashed name skips
+ * the direct hit and can only be read through the house-number path above.
+ */
+const tableKey = (value: string) =>
+  value.normalize('NFC').replace(/#/g, '№').replace(/\s+/g, ' ').trim()
+
 export interface OsmName {
   ru: string
   en: string
@@ -45,7 +55,7 @@ const toLatinSuffix = (number: string) =>
 export const namesAttribution = table.meta.attribution
 
 export function lookupName(georgian: string): OsmName | null {
-  const trimmed = georgian.trim()
+  const trimmed = tableKey(georgian)
 
   const direct = names[trimmed]
   if (direct) return { ru: direct.ru, en: direct.en }

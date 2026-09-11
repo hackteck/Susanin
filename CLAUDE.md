@@ -251,6 +251,29 @@ raw left Georgian script inside a Russian string on 5 poles. The house-number
 rule is anchored at the *end* — a leading `№23` is a school's number and part of
 its name.
 
+**The feed spells that number two ways** — `№3` and `#3`, the hash on 308 of the
+578 — and the table is keyed the first way, because the build normalises it. The
+lookup has to normalise the same way or a whole name never matches the table
+directly: one pole writes `#1(ავტოსადგური)`, which the house-number rule then
+read as a number, sounded out, and published as «Улица Святого Севериана Ачарели
+№1(автосадгури)». That is Cyrillic, so the corpus guard that watches for Georgian
+*script* never saw it, and it is Georgian all the same to the only reader who
+matters. The guard for it asserts the whole name.
+
+**OSM sometimes tags one Georgian name two ways, and the majority is not always
+right.** The harvest keeps the spelling the most objects agree on, which is
+correct when the disagreement is a typo and wrong when it is a translation
+against a transliteration — the crowd is simply bigger on the older tagging.
+Ways named `წმინდა სევერიანე აჭარელის ქუჩა` carry both «улица Цминда Севериане
+Ачарели» and «улица Святого Севериана Ачарели»; the transliteration won on count.
+`წმინდა` is the common noun "saint" — the feed abbreviates it `წმ.` exactly as
+Russian writes `св.` — so it is the kind of word the table exists to translate,
+and a hand entry says so. The same goes for a handful of names the feed
+misspells: a loose or fuzzy match lands on a shorter OSM object and the app then
+labels one street two ways depending on which pole the reader is standing at
+(`Улица Леонидзе` beside `Улица Георгия Леонидзе`). Those are hand entries too,
+and a test asserts the two spellings of each resolve to the same words.
+
 `api/src/domain/translit.ts` is still there and still matters: it renders Georgian
 into Cyrillic for anything OSM has never mapped, so a stop nobody has added does
 not fall back to Georgian script. 33 letters, one pass, cached with the dataset.

@@ -34,6 +34,31 @@ test('a leading number belongs to the name, not to the pole', () => {
   assert.equal(russianName('23-ე საჯარო სკოლა'), 'Публичная школа №23')
 })
 
+test('a bracketed qualifier is a word to translate, not a house number', () => {
+  // The feed writes this pole's number with a hash and glues a Georgian word to
+  // it. Read as a house number the bracket is sounded out — "№1(автосадгури)" —
+  // which is Cyrillic, so the corpus guard below never sees it, and is Georgian
+  // all the same to the only reader who matters.
+  assert.equal(russianName('წმ. სევერიან აჭარელის ქუჩა #1(ავტოსადგური)'), 'Улица Святого Севериана Ачарели (автовокзал)')
+  assert.equal(lookupName('წმ. სევერიან აჭარელის ქუჩა #1(ავტოსადგური)')?.en, 'St Severiane Achareli Street (bus station)')
+})
+
+test('the street a pole stands on reads the same at every pole on it', () => {
+  // Each of these is a name the feed misspells, matched loosely to a shorter or
+  // differently spelled OSM object. Left alone the app labels one street two
+  // ways depending on which pole the reader happens to be standing at.
+  assert.equal(russianName('გიორი ლეონიძის ქუჩა'), russianName('გიორგი ლეონიძის ქუჩა'))
+  assert.equal(russianName('მიხეილ ლერმონთოვის ქუჩა'), russianName('მიხეილ ლერმონტოვის ქუჩა'))
+  assert.equal(russianName('ტბელ აბუსერიძის ქუჩა'), russianName('ტბელ აბუსერისძის ქუჩა'))
+})
+
+test('a title is translated even when OSM mostly transliterates it', () => {
+  // OSM carries both spellings on ways of this name and the transliteration wins
+  // on object count; წმინდა is the common noun "saint", which is the kind of
+  // word this table exists to translate rather than sound out.
+  assert.equal(russianName('წმ. სევერიან აჭარელის ქუჩა'), 'Улица Святого Севериана Ачарели')
+})
+
 test('falls back rather than inventing when OSM has never heard of a stop', () => {
   const made_up = 'ხელოვნური გაჩერება'
   assert.equal(lookupName(made_up), null)

@@ -1,7 +1,7 @@
 {
  "meta": {
   "generator": "tools/build-names.mjs",
-  "generatedAt": "2026-09-11T08:25:49.642Z",
+  "generatedAt": "2026-09-11T14:47:45.800Z",
   "source": "OpenStreetMap",
   "license": "ODbL 1.0",
   "licenseUrl": "https://opendatacommons.org/licenses/odbl/1-0/",
@@ -41,14 +41,14 @@
    "distinctFeedNames": 426,
    "poles": 578,
    "polesCovered": 578,
-   "polesCoveredConfidently": 519,
+   "polesCoveredConfidently": 527,
    "byTier": {
-    "loose": 26,
-    "stem": 10,
-    "exact": 88,
-    "hand": 28,
+    "loose": 23,
+    "stem": 9,
+    "exact": 86,
+    "hand": 35,
     "reorder": 13,
-    "fuzzy": 6,
+    "fuzzy": 5,
     "stem/loose": 1,
     "near": 4
    },
@@ -721,10 +721,11 @@
    "tier": "exact"
   },
   "გიორი ლეონიძის ქუჩა": {
-   "ru": "Улица Леонидзе",
-   "en": "Leonidze Street",
-   "src": "osm:ლეონიძის ქუჩა",
-   "tier": "loose"
+   "ru": "Улица Георгия Леонидзе",
+   "en": "Giorgi Leonidze Street",
+   "src": "osm:გიორგი ლეონიძის ქუჩა",
+   "tier": "hand",
+   "why": "the feed misspells გიორგი, so the loose match reached the bare \"ლეონიძის ქუჩა\" in OSM and dropped the first name the sibling poles carry"
   },
   "გოგებაშვილის ქუჩა": {
    "ru": "Улица Якова Гогебашвили",
@@ -784,10 +785,11 @@
    "why": "the feed misspells თეატრი; same theatre as the stop that spells it correctly"
   },
   "ვლადიმერ მაიაკოვსკის ქუჩა": {
-   "ru": "Улица Маяковского",
-   "en": "Mayakovsky Street",
-   "src": "osm:მაიაკოვსკის ქუჩა",
-   "tier": "loose"
+   "ru": "Улица Владимира Маяковского",
+   "en": "Vladimir Mayakovsky Street",
+   "src": "osm:ვლადიმირ მაიაკოვსკის ქუჩა",
+   "tier": "hand",
+   "why": "the feed writes ვლადიმერ for ვლადიმირ and the loose match reached the bare \"მაიაკოვსკის ქუჩა\"; OSM names the street in full, as it does the three dead ends off it"
   },
   "ზედაღელის ქუჩა": {
    "ru": "Улица Зедагели",
@@ -1021,10 +1023,11 @@
    "tier": "reorder"
   },
   "მე-11 საჯარო სკოლა": {
-   "ru": "Школа №11",
-   "en": "Public school #11",
-   "src": "osm:მე-11 საჯარო სკოლა",
-   "tier": "exact"
+   "ru": "Публичная школа №11",
+   "en": "Public School #11",
+   "src": "osm:№11 საჯარო სკოლა",
+   "tier": "hand",
+   "why": "as №8 — the short tagging won the count; the long one OSM also carries is \"Батумская государственная школа №11 имени Акакия Церетели\", which is a legal name and not what the pole says"
   },
   "მე-13 საჯარო სკოლა": {
    "ru": "Публичная школа №13",
@@ -1063,10 +1066,11 @@
    "tier": "reorder"
   },
   "მე-8 საჯარო სკოლა": {
-   "ru": "Школа №8",
+   "ru": "Публичная школа №8",
    "en": "Public School #8",
-   "src": "osm:მე-8 საჯარო სკოლა",
-   "tier": "exact"
+   "src": "osm:№8 საჯარო სკოლა",
+   "tier": "hand",
+   "why": "OSM maps this school twice — \"მე-8 საჯარო სკოლა\" tagged \"Школа №8\" and \"№8 საჯარო სკოლა\" tagged \"Публичная школа №8\"; the ten other schools on this network read the latter"
   },
   "მე–13 საჯარო სკოლა": {
    "ru": "Публичная школа №13",
@@ -1088,10 +1092,11 @@
    "why": "OSM names it by speciality (\"физико-математическая школа № 6\"); its four siblings on this network read \"Публичная школа №N\" and the pole says nothing about physics"
   },
   "მიხეილ ლერმონთოვის ქუჩა": {
-   "ru": "Улица Лермонтова",
-   "en": "Lermontov Street",
-   "src": "osm:ლერმონთოვის ქუჩა",
-   "tier": "loose"
+   "ru": "Улица Михаила Лермонтова",
+   "en": "Mikhail Lermontov Street",
+   "src": "osm:მიხეილ ლერმონტოვის ქუჩა",
+   "tier": "hand",
+   "why": "the feed writes თ for ტ; the pole that spells it correctly is matched exactly and reads \"Улица Михаила Лермонтова\""
   },
   "მიხეილ ლერმონტოვის ქუჩა": {
    "ru": "Улица Михаила Лермонтова",
@@ -1372,10 +1377,11 @@
    "tier": "exact"
   },
   "ტბელ აბუსერიძის ქუჩა": {
-   "ru": "Улица Тбель Абуселидзе",
-   "en": "Tbel Abuselidze Street",
-   "src": "osm:ტბელ აბუსერისძის ქ.",
-   "tier": "fuzzy"
+   "ru": "Улица Тбел Абусеридзе",
+   "en": "Tbel Abuseridze Street",
+   "src": "osm:ტბელ აბუსერისძის ქუჩა",
+   "tier": "hand",
+   "why": "the feed drops the ს of აბუსერისძე and the fuzzy match landed on an OSM object spelling the surname \"Абуселидзе\"; the poles that spell it correctly read \"Абусеридзе\", and so does the church of the same saint"
   },
   "ფერიის ქუჩა (ბოლო გაჩერება)": {
    "ru": "Улица Ферии (конечная)",
@@ -1518,21 +1524,22 @@
    "tier": "exact"
   },
   "წმ. სევერიან აჭარელის ქუჩა": {
-   "ru": "Улица Цминда Севериане Ачарели",
-   "en": "Tsminda Severiane Achareli Street",
+   "ru": "Улица Святого Севериана Ачарели",
+   "en": "St Severiane Achareli Street",
    "src": "osm:წმინდა სევერიანე აჭარელის ქუჩა",
-   "tier": "stem"
+   "tier": "hand",
+   "why": "OSM carries both \"улица Цминда Севериане Ачарели\" and \"улица Святого Севериана Ачарели\" on ways of this name, and the transliteration wins on object count; წმინდა is the common noun \"saint\", which is exactly the kind of word this table exists to translate — the feed even abbreviates it to წმ., the way Russian writes св."
   },
   "წმ. სევერიან აჭარელის ქუჩა №1(ავტოსადგური)": {
-   "ru": "Улица Цминда Севериане Ачарели (автовокзал)",
-   "en": "Tsminda Severiane Achareli Street (bus station)",
+   "ru": "Улица Святого Севериана Ачарели (автовокзал)",
+   "en": "St Severiane Achareli Street (bus station)",
    "src": "osm:წმინდა სევერიანე აჭარელის ქუჩა",
    "tier": "hand",
    "why": "same pole, spelled with a house number glued to the bracket, so the number rule leaves it alone"
   },
   "წმ. სევერიან აჭარელის ქუჩა.(ავტოსადგური)": {
-   "ru": "Улица Цминда Севериане Ачарели (автовокзал)",
-   "en": "Tsminda Severiane Achareli Street (bus station)",
+   "ru": "Улица Святого Севериана Ачарели (автовокзал)",
+   "en": "St Severiane Achareli Street (bus station)",
    "src": "osm:წმინდა სევერიანე აჭარელის ქუჩა",
    "tier": "hand",
    "why": "as above — the street from OSM, the bracket kept because it says which pole this is"
