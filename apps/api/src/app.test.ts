@@ -211,3 +211,35 @@ test('a repeated route id does not multiply the answer', live, async () => {
   assert.equal(thrice.body.length, once.body.length)
   assert.equal(new Set(thrice.body.map((vehicle) => vehicle.id)).size, thrice.body.length)
 })
+
+/**
+ * The whole point of these headers is a shared cache in front of the function,
+ * so the per-process TTL cache stops being multiplied by the instance count.
+ * Vercel caches a function response only when `Cache-Control` carries
+ * `s-maxage`, and refuses outright if it carries `no-cache` or `no-store` — so
+ * both halves are asserted. This was `no-cache` once, which meant every poll of
+ * every open tab reached a function, fan-out and all, and nothing said so.
+ */
+test('live routes are cacheable by a shared cache, briefly', live, async () => {
+  // A real stop: the arrivals route 404s for an unknown one, and a 404 carries
+  // no cache header, so the guard would pass by never looking at anything.
+  const stops = (await json<Stop[]>('/api/stops')).body
+  const paths = ['/api/vehicles', `/api/stops/${stops[0]!.id}/arrivals`]
+
+  for (const path of paths) {
+    const header = (await get(path)).headers.get('cache-control') ?? ''
+    assert.match(header, /s-maxage=\d+/, `${path} must let a shared cache collapse pollers: ${header}`)
+    assert.doesNotMatch(header, /no-store|no-cache|private/, `${path} is uncacheable at the edge: ${header}`)
+    // The browser is a different matter: a position it keeps is a bus drawn as
+    // current when it is not, which is the one thing this app refuses to do.
+    assert.match(header, /max-age=0/, `${path} must not be cached by the browser: ${header}`)
+  }
+})
+
+test('the network is cacheable for longer, since it changes about once a year', live, async () => {
+  for (const path of ['/api/routes', '/api/stops']) {
+    const header = (await get(path)).headers.get('cache-control') ?? ''
+    assert.match(header, /s-maxage=\d+/, `${path}: ${header}`)
+    assert.doesNotMatch(header, /no-store|no-cache|private/, `${path}: ${header}`)
+  }
+})

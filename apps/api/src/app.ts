@@ -16,10 +16,33 @@ app.use(
   }),
 )
 
-// Our own cache headers, since the client polls: the network is effectively
-// static, live positions are not.
-const STATIC_CACHE = 'public, max-age=300, stale-while-revalidate=600'
-const LIVE_CACHE = 'no-cache'
+/**
+ * Our own cache headers, since the client polls. `s-maxage` is the load-bearing
+ * part and it is aimed at a shared cache, not at the browser.
+ *
+ * The per-process TTL cache below bounds upstream load per *process*, and on
+ * Vercel that is multiplied by however many instances happen to be warm. A
+ * shared cache in front of the function collapses them all: with `s-maxage`,
+ * every viewer in a region is answered from one origin response per window,
+ * whatever the instance count. It is the cheapest available fix for the ceiling
+ * described in the README, and it needs no infrastructure.
+ *
+ * `no-cache` is what these live routes used to send, and it meant every poll of
+ * every open tab reached a function — the 28-way upstream fan-out included.
+ *
+ * The windows deliberately match the TTLs in config.ts, which in turn match what
+ * upstream itself declares (`max-age=4` for positions, 600 for the dataset). So
+ * a shared cache is never staler than the data claims to be, which is why this
+ * does not contradict the rule that a cached bus is worse than no bus: that rule
+ * is about the service worker holding a position across sessions and presenting
+ * it as current. Four seconds, shared, cannot do that — and `max-age=0` keeps
+ * the *browser* out of it, which is where a stale bus would really come from.
+ *
+ * Vercel strips `s-maxage` and `stale-while-revalidate` before the response
+ * reaches the browser, so one header serves both audiences.
+ */
+const STATIC_CACHE = 'public, max-age=300, s-maxage=600, stale-while-revalidate=3600'
+const LIVE_CACHE = 'public, max-age=0, s-maxage=4, stale-while-revalidate=4'
 
 app.get('/health', async (context) => {
   try {

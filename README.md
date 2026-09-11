@@ -142,10 +142,19 @@ with single-flight, so a hundred simultaneous viewers of one server cost one
 upstream request per route per interval; failures are cached too, so an outage
 costs less than healthy traffic rather than more.
 
-**That bound is per process, not global.** On Vercel each serverless instance
-holds its own cache, so the real ceiling is multiplied by however many instances
-are warm. If this ever gets real traffic, that is the thing to fix first — a
-shared cache, or a single long-running instance instead of serverless.
+**That bound is per process, not global** — on Vercel each serverless instance
+holds its own cache, so the raw ceiling is multiplied by however many instances
+are warm. The shared cache that fixes it is the CDN: every response carries
+`s-maxage` matching its own TTL, so one origin response answers every viewer in
+a region for that window however many instances exist. The live routes used to
+send `no-cache`, which meant every poll of every open tab reached a function.
+`max-age=0` keeps the browser out of it, because a bus the browser kept is the
+one that would actually be stale.
+
+What that cannot help with is a cold instance fetching the 1.27 MB dataset. If
+this ever takes traffic that makes *that* hurt, the fix is to stop being
+serverless — `apps/api/src/server.ts` already mounts the same app for a
+long-running process, so it is a deploy change rather than a rewrite.
 
 Please keep it that way.
 

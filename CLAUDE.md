@@ -70,12 +70,35 @@ rather than re-derived.
   upstream requests per five-second poll against a healthy ceiling of 28 per
   four. `cache.test.ts` guards it.
 
-  **That ceiling is per process.** The cache is a module singleton, so on Vercel
-  each warm serverless instance has its own and the real bound is multiplied by
-  however many are running. The README says so plainly rather than promising a
-  global number we do not deliver. Fixing it properly means a shared cache or a
-  single long-running instance, and that is the first thing to do if this ever
-  takes real traffic.
+  **That ceiling is per process**, because the cache is a module singleton — on
+  Vercel each warm instance has its own, so the real bound is multiplied by
+  however many are running.
+
+  **The shared cache that fixes it is the CDN, not a database.** Every response
+  now carries `s-maxage` matching its own TTL, so one origin response answers
+  every viewer in a region for that window whatever the instance count. The live
+  routes used to send `no-cache`, which meant every poll of every open tab
+  reached a function — the 28-way fan-out included — and measured on production,
+  `/api/vehicles` was `X-Vercel-Cache: MISS` every single time while
+  `/api/routes` was already collapsing to `HIT`. `max-age=0` keeps the *browser*
+  out of it, which is the only place a genuinely stale bus could come from;
+  Vercel strips `s-maxage` before the response reaches it, so one header serves
+  both. `app.test.ts` guards the pair, and it was checked by putting `no-cache`
+  back and watching it go red.
+
+  `fluid: true` in `vercel.json` belongs to the same problem rather than to
+  billing: fluid compute lets one instance serve concurrent requests, so there
+  are fewer instances and therefore fewer duplicate caches. It is the default for
+  new projects and is stated anyway, because here it is load-bearing.
+
+  What remains after that is a cold instance fetching the 1.27 MB dataset once
+  per TTL, which the CDN cannot help with. If this ever takes traffic that makes
+  *that* hurt, the fix is to stop being serverless — `apps/api/src/server.ts`
+  already mounts the same Hono app for a long-running process, so it is a deploy
+  change and not a rewrite, and one process means the bound above becomes
+  literally true. A shared KV cache is the obvious-sounding answer and the wrong
+  one: at a four-second TTL it adds a network hop and a second failure mode to do
+  a job the CDN already does for nothing.
 
 ### What the feed does and does not give us
 
