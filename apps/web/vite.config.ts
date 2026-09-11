@@ -95,6 +95,14 @@ export default defineConfig(() => {
     // servers proxy to the API so that a production build can be checked the
     // way it will actually run, not just the dev one.
     server: {
+      // Pinned rather than left to drift. Vite's default is to take the next
+      // free port when 5173 is busy, which means a second `npm run dev` starts
+      // a server that looks right, answers on an address nothing documents, and
+      // serves whichever checkout it was started from. Failing loudly is the
+      // cheaper outcome — it is also the only thing that makes "the dev server
+      // is on 5173" a fact rather than a hope.
+      port: 5173,
+      strictPort: true,
       proxy: {
         '/api': { target: 'http://localhost:8787', changeOrigin: true },
       },
@@ -105,6 +113,8 @@ export default defineConfig(() => {
       allowedHosts: ['.trycloudflare.com'],
     },
     preview: {
+      port: 4173,
+      strictPort: true,
       proxy: {
         '/api': { target: 'http://localhost:8787', changeOrigin: true },
       },

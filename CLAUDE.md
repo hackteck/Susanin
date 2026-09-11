@@ -603,7 +603,18 @@ from the web build, and both are easy to get wrong:
   `VITE_API_BASE`, and then **greps the bundle to prove it landed**. A build
   that silently shipped without it would install fine and show nothing.
 - **CORS.** The packaged app *is* cross-origin, so `https://localhost` and
-  `capacitor://localhost` are in the API's default `allowedOrigins`.
+  `capacitor://localhost` are in the API's default `allowedOrigins` — and they
+  are now the *only* things in it. The list used to carry three dev ports as
+  well, and none of them did anything: the web app is same-origin wherever it
+  runs, because both Vite servers proxy `/api`, so the browser never sends an
+  `Origin` at all. Measured by emptying the list of localhost and loading the
+  app, which works. One of the three (`5273`) matched nothing in the repo, and
+  Vite silently takes the next free port when one is busy — so the list could not
+  be trusted even for the direct-to-API case it was written for. That is what
+  `strictPort` in `vite.config.ts` is for: a second `npm run dev` now fails with
+  "Port 5173 is already in use" instead of starting a server on an address
+  nothing documents, which is how an afternoon gets spent testing the wrong
+  process.
 
 - **Location permissions are patched into the generated manifest.** Capacitor's
   template declares `INTERNET` and nothing else, `cap add android` regenerates

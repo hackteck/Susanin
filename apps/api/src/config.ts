@@ -9,15 +9,24 @@ export const config = {
   port: int(process.env.PORT, 8787),
 
   /**
-   * Browsers allowed to call the API cross-origin. The web app is same-origin
-   * and needs no entry; the Capacitor build is not — it runs the bundle from
-   * `https://localhost` (Android) or `capacitor://localhost` (iOS), so those
-   * are allowed by default or the packaged app cannot reach its own API.
+   * Browsers allowed to call the API cross-origin — which in practice is only
+   * the packaged app. The web app is same-origin everywhere it runs: deployed it
+   * shares a domain with the API, and in dev both Vite servers proxy `/api`, so
+   * the browser makes no cross-origin request and sends no `Origin` at all.
+   * Measured by emptying this of localhost and loading the app: it works.
+   *
+   * Capacitor is the exception and cannot be proxied — it serves the bundle from
+   * `https://localhost` (Android) or `capacitor://localhost` (iOS). Those two
+   * stay, or the packaged app goes blank.
+   *
+   * The dev ports that used to sit here were doing nothing: they only ever
+   * applied to a browser pointed straight at this port instead of through the
+   * proxy, one of them (5273) matched nothing in this repo at all, and Vite
+   * silently moves to the next free port when one is busy — so the list could
+   * not be relied on even for the case it was written for. `vite.config.ts` now
+   * pins the ports, and ALLOWED_ORIGINS is how you talk to the API directly.
    */
-  allowedOrigins: (
-    process.env.ALLOWED_ORIGINS ??
-    'http://localhost:5173,http://localhost:5273,http://localhost:4173,https://localhost,capacitor://localhost'
-  )
+  allowedOrigins: (process.env.ALLOWED_ORIGINS ?? 'https://localhost,capacitor://localhost')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
