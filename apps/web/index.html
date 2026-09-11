@@ -2,7 +2,13 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- No `viewport-fit=cover`, deliberately. With it, iOS hands a standalone
+         PWA the whole screen and every surface has to inset itself with
+         env(safe-area-inset-*) — which is not one fix but one per surface, and
+         each is a chance to be wrong silently. Without it the system keeps the
+         web view inside the safe area and draws its own bars on its own
+         background, which is what a reader sees as "correct". -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <title>Сусанин — автобусы Батуми в реальном времени</title>
     <meta
@@ -14,15 +20,22 @@
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="stylesheet" href="/globals.css" />
 
-    <!-- Follows the theme, so the phone's status bar matches the app instead of
-         framing a dark map in white. -->
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
+    <!-- One colour, and it must equal the manifest's `theme_color`. Measured on
+         Android 16 / Chrome 152, installed to the home screen: an installed PWA
+         takes the status bar's *background* from the manifest — fixed when the
+         app was added — and uses this tag only to choose the contrast of the
+         clock and icons drawn on it. Keyed to `prefers-color-scheme` these
+         disagreed whenever the reader's app theme and phone theme did, and
+         updating this one at runtime was worse still: the background stayed
+         white while the icons turned white with it, and the clock vanished. -->
+    <meta name="theme-color" content="#ffffff" />
     <!-- The standards-track name first; Chrome warns on the apple-prefixed one,
          which iOS still needs. -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- `default`, not `black-translucent`: translucent is what lets the clock
+         sit on top of the app. iOS keeps the bar opaque and owns it. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Сусанин" />
 
     <!-- Shared links: a bus map is exactly the kind of thing people paste into

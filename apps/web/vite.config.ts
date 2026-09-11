@@ -31,6 +31,12 @@ export default defineConfig(() => {
           // Matches the light theme's background so the splash does not flash
           // a colour the app never uses.
           background_color: '#ffffff',
+          // Read once, when the app is added to the home screen, and on Android
+          // it is the *only* thing that colours the status bar of an installed
+          // PWA — the <meta> cannot override it and the page cannot paint there.
+          // So it is a single fixed colour by necessity, it matches the default
+          // light theme, and index.html's <meta> must be kept equal to it or the
+          // icons drawn on this background lose their contrast.
           theme_color: '#ffffff',
           categories: ['travel', 'navigation', 'utilities'],
           icons: [
@@ -92,11 +98,17 @@ export default defineConfig(() => {
       proxy: {
         '/api': { target: 'http://localhost:8787', changeOrigin: true },
       },
+      // A tunnel is the only way to meet this app on the device it is for: iOS
+      // will not install a PWA or grant geolocation over plain http, and the
+      // bugs that matter here only exist on a real phone. Vite rejects a Host it
+      // does not recognise, which a tunnel's hostname always is.
+      allowedHosts: ['.trycloudflare.com'],
     },
     preview: {
       proxy: {
         '/api': { target: 'http://localhost:8787', changeOrigin: true },
       },
+      allowedHosts: ['.trycloudflare.com'],
     },
   } satisfies UserConfig
 })

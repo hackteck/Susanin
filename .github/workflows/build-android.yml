@@ -97,7 +97,8 @@ jobs:
             echo "  $f: $(wc -c <"$TILES/$f") bytes"
           done
       # A packaged app is not a browser tab: it cannot be pinch-zoomed out of
-      # shape, and the map supplies its own zooming.
+      # shape, and the map supplies its own zooming. No `viewport-fit=cover`,
+      # matching the web build — see index.html for why.
       - name: Set correct viewport
         shell: node {0}
         run: |
@@ -106,7 +107,7 @@ jobs:
           const content = fs.readFileSync(path, "utf8");
           const replaced = content.replace(
               /<meta[^>]*name="viewport"[^>]*>/,
-              `<meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, height=device-height, viewport-fit=cover">`
+              `<meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, height=device-height">`
           );
           if (replaced === content) {
             console.error("::error::viewport meta not found in " + path);

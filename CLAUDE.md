@@ -503,6 +503,42 @@ What is cached, and why each choice is deliberate:
   through to "no more today" — which is what it did before, and which told a
   rider the service had ended when the truth was that we could not see.
 
+**The app never paints under the system's own bars**, on either platform. The
+viewport meta omits `viewport-fit=cover` and iOS gets
+`apple-mobile-web-app-status-bar-style: default`, so the system keeps the web
+view inside the safe area and draws its bars itself. The Android workflow's
+viewport rewrite matches.
+
+The opposite was tried first — edge to edge, every surface insetting itself with
+`env(safe-area-inset-*)` — and it is not one fix but one per surface, each able
+to fail silently. Two did, on a real phone: the header was right while the drawer
+beside it sat under the clock, because the drawer is teleported to `<body>` and
+the rule had been written for `#app > aside`, a selector that matches nothing and
+tells no one; and in landscape the drawer's left inset shrank its content box
+until the route grid clipped. The cost of not painting edge to edge is an
+edge-to-edge map. The saving is that whole category of bug.
+
+**Android's status bar cannot be made to follow the app's theme, and this was
+measured rather than assumed.** On Android 16 / Chrome 152, installed to the home
+screen: the bar's background comes from the manifest's `theme_color`, fixed when
+the app was added; `<meta name="theme-color">` only chooses the contrast of the
+clock and icons drawn on it. Three attempts, each checked by screenshotting the
+device over adb and sampling the pixels:
+
+- meta updated at runtime to the dark colour → bar stayed `#FFFFFF`, icons turned
+  white, and the clock disappeared into it;
+- meta set to the dark colour *statically*, in the HTML → bar stayed `#FFFFFF`;
+- `viewport-fit=cover` set inline, before first layout, so the app could paint the
+  strip itself → every `env(safe-area-inset-*)` still `0px`, and the viewport
+  still stopped below the bar. Chrome does not extend an installed PWA under the
+  status bar in this version.
+
+So the manifest's colour and the meta are one fixed value, deliberately equal,
+matching the default light theme. A dark-theme reader gets a white bar with dark
+icons: mismatched, but legible, which is the best available. Chrome is changing
+this for installed PWAs; when it lands, `viewport-fit=cover` becomes worth
+revisiting.
+
 Icons are generated, not hand-drawn: `tools/icon.html` renders them and the
 browser screenshots the element (element-level, because a window has a minimum
 width and a viewport shot came out 984 px wide). Regenerate them the same way.
