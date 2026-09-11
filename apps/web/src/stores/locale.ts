@@ -13,9 +13,19 @@ const initial = (): Locale => {
 
   // Russian is the default: it is what most of Batumi's visitors and a large
   // share of its residents read, and the feed's own names are Georgian either
-  // way. A Georgian or English browser still gets its own language.
-  if (navigator.language.startsWith('ka')) return 'ka'
-  if (navigator.language.startsWith('en')) return 'en'
+  // way. A browser that asks for one of the three still gets its own language.
+  //
+  // Asked of the whole list, in the reader's own order, rather than of
+  // `navigator.language` — which is only the first entry. A browser set to
+  // German and then English answered "not Georgian, not English" and got
+  // Russian, with English sitting one line further down the list it had
+  // published. Empty on some browsers, hence the fallback.
+  const requested = navigator.languages?.length ? navigator.languages : [navigator.language]
+  for (const tag of requested) {
+    const base = tag.toLowerCase().split('-')[0]
+    if (base === 'ka' || base === 'en' || base === 'ru') return base
+  }
+
   return 'ru'
 }
 
