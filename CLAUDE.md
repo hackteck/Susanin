@@ -319,7 +319,21 @@ colours they were chosen to be.
 The archive is generated, gitignored and never committed; `tools/build-basemap.mjs`
 is what is committed, it pins the planet build date, and it fails loudly rather
 than shipping a file that is the right size and the wrong language — it decodes a
-Batumi tile and asserts `name:ru` is really on the roads. The map is
+Batumi tile and asserts `name:ru` is really on the roads.
+
+**Being generated makes it the one deploy input that can go missing quietly**, and
+it did: a request for a tile that is not there falls through the SPA's catch-all
+rewrite to `index.html`, so the reader gets `Wrong magic number for PMTiles
+archive` over a blank map while every build step reports success. So `npm run
+basemap` is part of `vercel.json`'s `buildCommand` rather than a step in one
+workflow — that way the deploy workflow, a git-integration deploy and `vercel dev`
+all get it — the Android workflow runs it before packaging, and both workflows
+then read the first seven bytes of the built artifact and fail if they are not
+`PMTiles`. A `predev` script does the same for a fresh clone, because the second
+way to meet this error is to run `npm run dev` on a checkout that has never built
+the tiles. The cost of generating rather than committing is that a deploy now
+depends on `build.protomaps.com` being reachable; that is a loud failure, and
+preferable to a 5.85 MiB binary in every diff. The map is
 not a surstromming component and never will be — it's an app concern.
 
 Leaflet is imperative and owns its DOM subtree, so it is wrapped in exactly one

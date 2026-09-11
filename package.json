@@ -8,6 +8,7 @@
     "apps/*"
   ],
   "scripts": {
+    "predev": "npm run basemap",
     "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm run dev --workspace @susanin/api",
     "dev:web": "npm run dev --workspace @susanin/web",

@@ -86,6 +86,31 @@ jobs:
       - name: Build
         run: npx vercel build --prod --token=$VERCEL_TOKEN
 
+
+      # The basemap is generated, not committed, so it is the one deploy input
+      # that can go missing without anything failing: a request for a tile that
+      # is not there falls through the SPA rewrite to index.html, and the reader
+      # gets "Wrong magic number for PMTiles archive" on a blank map. Ask the
+      # bytes, not the exit code — `vercel build` succeeded either way.
+      - name: Check the basemap landed in the build output
+        shell: node {0}
+        run: |
+          const { openSync, readSync, closeSync, statSync } = require("fs");
+          const path = ".vercel/output/static/tiles/batumi.pmtiles";
+          let size;
+          try { size = statSync(path).size } catch {
+            console.error("::error::" + path + " is missing — `npm run basemap` did not run, or Vite did not copy public/.");
+            process.exit(1);
+          }
+          const head = Buffer.alloc(7);
+          const fd = openSync(path, "r");
+          readSync(fd, head, 0, 7, 0);
+          closeSync(fd);
+          if (head.toString("latin1") !== "PMTiles") {
+            console.error("::error::" + path + " is not a PMTiles archive (starts with " + JSON.stringify(head.toString("latin1")) + ").");
+            process.exit(1);
+          }
+          console.log("basemap present: " + size.toLocaleString() + " bytes");
       - name: Deploy
         id: deploy
         run: |

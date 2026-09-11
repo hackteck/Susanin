@@ -47,6 +47,12 @@ jobs:
           npm run typecheck
           npm test
 
+      # The basemap is generated rather than committed, and a packaged app has no
+      # network fallback for it at all: without this the map is blank on a phone
+      # with no way for the reader to tell why. Cut before the web build, because
+      # Vite copies public/ verbatim into dist.
+      - name: Build the basemap extract
+        run: npm run basemap
       # The one thing that genuinely differs from the web build. On the web the
       # SPA and the API share an origin and the client uses a relative `/api`;
       # inside Capacitor the bundle is served from https://localhost, where that
@@ -70,6 +76,20 @@ jobs:
           fi
           echo "API base present in the bundle."
 
+      # Same reasoning as the API base: a generated input that goes missing
+      # produces an app that installs fine and shows nothing.
+      - name: Check the basemap was packaged
+        run: |
+          TILES=apps/web/dist/tiles/batumi.pmtiles
+          if [ ! -s "$TILES" ]; then
+            echo "::error::$TILES is missing — the map would be blank in the packaged app."
+            exit 1
+          fi
+          if [ "$(head -c 7 "$TILES")" != "PMTiles" ]; then
+            echo "::error::$TILES is not a PMTiles archive."
+            exit 1
+          fi
+          echo "Basemap packaged: $(wc -c <"$TILES") bytes."
       # A packaged app is not a browser tab: it cannot be pinch-zoomed out of
       # shape, and the map supplies its own zooming.
       - name: Set correct viewport
