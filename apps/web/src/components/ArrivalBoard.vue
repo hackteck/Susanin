@@ -18,7 +18,21 @@
 
     <ul v-if="rows.length && !showSkeleton" :class="$style.list">
       <li v-for="row in rows" :key="row.key" :class="$style.row" :style="{ '--hue': row.hue }">
-        <RouteChip :short-name="row.shortName" :hue="row.hue" />
+        <!-- Where the map is behind this board the chip is the filter, so it is
+             built like the sidebar's: the line's colour as an edge while it is
+             off, the whole chip in it once it is on. A filled badge reads as a
+             label and nobody presses a label. -->
+        <button
+          v-if="selectable"
+          type="button"
+          :class="[$style.pick, { [$style.isPicked]: isPicked(row.routeId) }]"
+          :aria-label="`${locale.t('routeLabel')} ${row.shortName}`"
+          :aria-pressed="isPicked(row.routeId)"
+          @click="emit('selectRoute', row.routeId)"
+        >
+          {{ row.shortName }}
+        </button>
+        <RouteChip v-else :short-name="row.shortName" :hue="row.hue" />
 
         <span :class="$style.destination">
           <span :class="$style.headsign">{{ row.headsign }}</span>
@@ -55,9 +69,15 @@ const props = withDefaults(
     servesNothing?: boolean;
     /** The feed could not be reached — which is not the same as no service. */
     failed?: boolean;
+    /** The board sits over the map, so its rows double as the route filter. */
+    selectable?: boolean;
+    /** Which lines are drawn, so a row can say whether it is one of them. */
+    selectedRouteIds?: string[];
   }>(),
-  { loading: false, servesNothing: false, failed: false },
+  { loading: false, servesNothing: false, failed: false, selectable: false, selectedRouteIds: () => [] },
 );
+
+const emit = defineEmits<{ selectRoute: [routeId: string] }>();
 
 const locale = useLocale();
 const now = useNow();
@@ -103,6 +123,7 @@ const rows = computed(() => {
 
     return {
       key: `${arrival.routeId}-${arrival.direction}`,
+      routeId: arrival.routeId,
       shortName: arrival.shortName,
       hue: arrival.hue,
       headsign: `→ ${locale.name(arrival.headsign)}`,
@@ -116,6 +137,8 @@ const rows = computed(() => {
     };
   });
 });
+
+const isPicked = (routeId: string) => props.selectedRouteIds.includes(routeId);
 
 const hasEstimates = computed(() => props.arrivals.some((arrival) => arrival.estimate));
 
@@ -239,6 +262,50 @@ $row-height: 56px;
 
   &:last-child {
     border-bottom: none;
+  }
+}
+
+// The sidebar filter chip's language, deliberately unchanged: a chip that means
+// "this line is on the map" in one place cannot mean something else two taps
+// away. Sized to the row's own chip so the board's rhythm survives.
+.pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: design.spacing(11);
+  height: design.spacing(8);
+  padding: 0 design.spacing(2);
+  border: 1px solid design.color(border);
+  border-left: design.spacing(1) solid oklch(var(--route-l) var(--route-c) var(--hue));
+  border-radius: design.radius(sm);
+  background-color: design.color(card);
+  color: design.color(card-foreground);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    background-color: design.color(accent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid design.color(ring);
+    outline-offset: 2px;
+  }
+}
+
+// One class against `.pick:hover`'s two, so it needs a hover of its own or the
+// neutral fill wins on specificity and a picked chip keeps the label it was
+// given for being coloured — white on pale grey.
+.isPicked {
+  border-color: oklch(var(--route-l) var(--route-c) var(--hue));
+  background-color: oklch(var(--route-l) var(--route-c) var(--hue));
+  color: var(--route-label);
+
+  &:hover {
+    border-color: oklch(calc(var(--route-l) - 0.06) var(--route-c) var(--hue));
+    background-color: oklch(calc(var(--route-l) - 0.06) var(--route-c) var(--hue));
   }
 }
 

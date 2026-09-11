@@ -223,7 +223,11 @@ isn't Latin.
 residents read it; a browser that says `ka` or `en` still gets its own language.
 The UI strings are translated properly, including the three plural forms Russian
 needs — `Intl.PluralRules` picks the category, because «5 автобуса» is exactly
-what a cheap translation looks like.
+what a cheap translation looks like. The count is not the only thing a noun has
+to agree with: the header counts buses across whatever is selected, so it is
+«на линии» for one route and «на линиях» for several or for none, which is all
+28. Georgian inflects the same way (`ხაზზე`/`ხაზებზე`) and English needs no line
+noun at all to say it.
 
 The names are the harder half. Seven stops in ten (407 of 578) have no Latin
 name at all, so
@@ -439,6 +443,26 @@ Motion tokens live in `src/styles/_motion.scss`, along with the list of what
 must **not** animate — the countdown may cross-fade but never slide, route
 polylines never animate at all, and only the soonest live row pulses.
 
+**The route selection is session state, and the bus pill is its undo.** It used
+to be written to `localStorage`, which is the right call for the theme and the
+locale and the wrong one here: a filter is not a preference. Reopening the app
+on a phone the next morning restored a narrowing nobody remembered making, and
+the failure is quiet — not an empty map but a plausible one, four buses instead
+of forty, with nothing on screen saying the city is being hidden. It starts
+empty every session now, and the stale key is simply left unread rather than
+migrated away, since a `removeItem` for a build nobody runs any more would
+outlive its reason by years.
+
+Clicking a bus therefore has to be reversible by clicking it again: the pill is
+the only undo the reader has a finger on, and having to find the sidebar to
+clear a filter set by tapping the map is the worse trade. It is the **same
+toggle the sidebar chip runs** — `toggleRoute`, not a map-only variant — because
+two ways to pick a route that disagreed about what a second press does is worse
+than either rule on its own. The accepted cost is that tapping a bus while
+several routes are selected removes its line and takes that bus off the map with
+it: `visibleVehicles` filters by the selection. One learnable rule is worth more
+than sparing that one case.
+
 ## Route colours
 
 The feed has no route colours and 28 routes is far past the 5-step categorical
@@ -590,6 +614,16 @@ Two ways, both entirely client-side over the 578 stops already in the store:
   through it, and pressing one lands on the map with **only that route** drawn.
   It sets the selection and navigates — the selection *is* the map's state, so
   there is no route id in the URL and nothing new to keep in sync.
+- **On the map, the arrival row is that affordance.** The sheet needs no chip
+  section of its own: every row already names a line and where it is going, and
+  a second list of the same numbers above them is the same interface twice. So
+  the chip *in the row* is the button (`selectable` on `ArrivalBoard`), and it
+  is built like the sidebar's — the line's colour as an edge while it is off,
+  the whole chip in it once it is on. A filled badge is what the row used to
+  show, and nobody presses a label: looking pressable is the half that makes the
+  affordance exist. The stop page keeps its own chips and passes no
+  `selectable`, because there the same gesture would toggle a map nobody can
+  see, and its chips already mean "take me there".
 - **The chosen stop is drawn differently** — bigger, and filled with the inverse
   of an ordinary stop rather than a new colour, because the 28 route hues
   already own colour on this map and a twenty-ninth would just join them. It is

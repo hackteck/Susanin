@@ -34,7 +34,10 @@ export const messages = {
 
   allRoutes: { ru: 'Все маршруты', ka: 'ყველა მარშრუტი', en: 'All routes' },
   clearSelection: { ru: 'Сбросить', ka: 'გასუფთავება', en: 'Clear' },
-  onTheRoad: { ru: 'на линии', ka: 'ხაზზე', en: 'running' },
+  // One line or several: a count drawn from the whole fleet is not «на линии».
+  // English needs no line noun to say it, so both forms are the same word.
+  onTheLine: { ru: 'на линии', ka: 'ხაზზე', en: 'running' },
+  onTheLines: { ru: 'на линиях', ka: 'ხაზებზე', en: 'running' },
   noBuses: {
     ru: 'Сейчас на маршруте нет автобусов',
     ka: 'ამ მარშრუტზე ავტობუსი არ ჩანს',

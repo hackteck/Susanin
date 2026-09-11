@@ -3,19 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import type { Route, RouteDetail, Stop, Vehicle } from '@/api/types'
 
-const storageKey = 'selected-routes'
-
 /** Upstream caches positions for 4s; polling faster only costs requests. */
 const POLL_MS = 5000
-
-const readSelection = (): string[] => {
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]')
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []
-  } catch {
-    return []
-  }
-}
 
 /**
  * The network (loaded once) plus the live vehicle feed. App-wide because the
@@ -28,8 +17,15 @@ export const useTransit = defineStore('transit', () => {
   const loading = ref(false)
   const failed = ref(false)
 
-  /** Empty means every route — the default "whole city" view. */
-  const selectedRouteIds = ref<string[]>(readSelection())
+  /**
+   * Empty means every route — the default "whole city" view, and where every
+   * session starts. Deliberately not persisted: a filter is not a preference
+   * the way the theme and the locale are, and on a phone the app is reopened
+   * hours later with no memory of having narrowed it. What that looks like is
+   * not an empty map but a plausible one — four buses instead of forty — so
+   * nothing on screen says the city is being hidden.
+   */
+  const selectedRouteIds = ref<string[]>([])
 
   const routeById = computed(() => new Map(routes.value.map((route) => [route.id, route])))
   const stopById = computed(() => new Map(stops.value.map((stop) => [stop.id, stop])))
@@ -97,23 +93,18 @@ export const useTransit = defineStore('transit', () => {
     return request
   }
 
-  const persist = () => localStorage.setItem(storageKey, JSON.stringify(selectedRouteIds.value))
-
   const toggleRoute = (id: string) => {
     selectedRouteIds.value = selectedRouteIds.value.includes(id)
       ? selectedRouteIds.value.filter((selected) => selected !== id)
       : [...selectedRouteIds.value, id]
-    persist()
   }
 
   const selectOnly = (id: string) => {
     selectedRouteIds.value = [id]
-    persist()
   }
 
   const clearSelection = () => {
     selectedRouteIds.value = []
-    persist()
   }
 
   let timer: number | undefined

@@ -17,7 +17,7 @@
       :glide-ms="transit.POLL_MS"
       :bottom-inset="sheetInset"
       @select-stop="selectStop"
-      @select-vehicle="focusVehicleRoute"
+      @select-vehicle="toggleVehicleRoute"
       @pick-point="onPickPoint"
       @view-change="view = $event"
     />
@@ -101,12 +101,18 @@
         <Alert v-if="mode === 'list' && proximity.coarse" :title="locale.t('coarseFix')" />
 
         <ScrollArea :class="$style.panelBody">
+          <!-- On the map the board doubles as the route filter: each row already
+               names a line and where it is going, so pressing it draws that line
+               rather than adding a second list of the same numbers above. -->
           <ArrivalBoard
             v-if="mode === 'stop' && selectedStop"
             :arrivals="arrivals"
             :loading="loading"
             :serves-nothing="!selectedStop.routeIds.length"
             :failed="failed"
+            selectable
+            :selected-route-ids="transit.selectedRouteIds"
+            @select-route="transit.toggleRoute"
           />
 
           <p v-else-if="!nearby.length" :class="$style.empty">{{ locale.t("noStopsNearPoint") }}</p>
@@ -339,11 +345,13 @@ watch(
 // of the map puts it underneath. The map is told how much room to leave.
 const sheetInset = computed(() => (isMobile.value ? window.innerHeight * 0.5 : 0));
 
-// Clicking a bus is a question about its line, so the map answers by showing
-// only that line — the alternative is a popup that says what the pill already does.
-const focusVehicleRoute = (vehicleId: string) => {
+// Clicking a bus is a question about its line, and the pill answers it exactly
+// as the sidebar chip does — the line goes on, or comes off again. Two ways to
+// pick a route that disagreed about what a second press means would be worse
+// than either rule alone, and the pill is the only undo a thumb is already on.
+const toggleVehicleRoute = (vehicleId: string) => {
   const vehicle = transit.vehicles.find((candidate) => candidate.id === vehicleId);
-  if (vehicle) transit.selectOnly(vehicle.routeId);
+  if (vehicle) transit.toggleRoute(vehicle.routeId);
 };
 
 // Only when exactly one route is drawn. With two the colours would compete and
@@ -549,6 +557,7 @@ watch(
 .panelBody {
   min-height: 0;
 }
+
 
 .empty {
   color: design.color(muted-foreground);

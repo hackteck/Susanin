@@ -6,7 +6,7 @@
         <div :class="$style.headText">
           <h1 :class="$style.title">{{ locale.t("routeLabel") }} {{ detail.shortName }}</h1>
           <p :class="$style.subtitle">
-            {{ locale.plural(runningNow.length, "buses") }} {{ locale.t("onTheRoad") }}
+            {{ locale.plural(runningNow.length, "buses") }} {{ locale.t("onTheLine") }}
           </p>
         </div>
         <Button variant="outline" size="sm" @click="showOnMap">{{ locale.t("map") }}</Button>

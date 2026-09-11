@@ -12,7 +12,7 @@
     <div :class="$style.actions">
       <span v-if="transit.watching" :class="$style.status">
         <i :class="statusClasses" />
-        {{ locale.plural(transit.runningVehicles.length, "buses") }} {{ locale.t("onTheRoad") }}
+        {{ locale.plural(transit.runningVehicles.length, "buses") }} {{ locale.t(lineForm) }}
       </span>
 
       <LocaleMenu />
@@ -43,6 +43,12 @@ const transit = useTransit();
 const { theme, toggle: toggleTheme } = useTheme();
 
 const $style = useCssModule();
+
+// The count spans whatever is selected, so the noun has to agree with it: one
+// route picked is «на линии», and every other case — several picked, or none,
+// which draws all 28 — is «на линиях». Georgian inflects the same way; English
+// says neither.
+const lineForm = computed(() => (transit.selectedRouteIds.length === 1 ? "onTheLine" : "onTheLines"));
 
 const themeIcon = computed(() => (theme.value === "dark" ? Sun : Moon));
 
