@@ -1,0 +1,41 @@
+// The app's motion vocabulary. `@surstromming/design` ships tokens for colour,
+// spacing, radius, shadow, font and z-index but none for motion, so this is the
+// app's own — kept as Sass constants rather than custom properties because
+// nothing here is a consumer's to override at runtime.
+//
+// The forbidden list matters more than the durations:
+//   - a countdown number may cross-fade; it may never slide or scale, because a
+//     moving number cannot be read and reads as a slot machine
+//   - route polylines never animate — 28 of them under a flowing dash would
+//     hold the compositor awake and drain exactly the phone this runs on
+//   - markers never animate during a zoom, which rewrites every transform at once
+//   - nothing loops except the single live pulse
+
+/** State flips and hover. */
+$instant: 100ms;
+/** The countdown digit cross-fade. */
+$quick: 150ms;
+/** Badges, panel content, row reflow. */
+$standard: 250ms;
+/** The mobile sheet arriving. */
+$emphasized: 320ms;
+/** A marker turning to face its new bearing. */
+$heading: 400ms;
+/** One breath of the live pulse. */
+$pulse: 2000ms;
+
+/** Anything entering the viewport. Perceptibly slow to start, so never < 150ms. */
+$ease-enter: cubic-bezier(0.2, 0, 0, 1);
+/** Everything short. */
+$ease-micro: ease-out;
+
+// Honour a reader who has asked the OS for less movement. The live pulse loses
+// its ring but keeps its dot — the dot carries information, the ring is
+// decoration — and the marker glide is deliberately kept, because a bus that
+// teleports every five seconds is worse for a motion-sensitive reader than one
+// that moves smoothly.
+@mixin reduced {
+  @media (prefers-reduced-motion: reduce) {
+    @content;
+  }
+}

@@ -1,0 +1,161 @@
+name: Build Android app using Capacitor
+
+# Manual only. The web app is the product; this produces an installable wrapper
+# for people who want it on a home screen without going through a browser.
+on:
+  workflow_dispatch:
+    inputs:
+      api_base:
+        description: >
+          Absolute URL of the deployed API, e.g. https://susanin.vercel.app/api.
+          A packaged app has no origin to serve /api from, so this is required.
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: "zulu"
+          java-version: "25"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.1"
+
+      - name: Install app dependencies
+        run: npm ci
+
+      # Same gate as the deploy: an app store build is a worse place to find a
+      # broken countdown than a pull request is.
+      - name: Typecheck and test
+        run: |
+          npm run typecheck
+          npm test
+
+      # The one thing that genuinely differs from the web build. On the web the
+      # SPA and the API share an origin and the client uses a relative `/api`;
+      # inside Capacitor the bundle is served from https://localhost, where that
+      # path resolves to nothing. The deployed API's absolute URL is baked in.
+      - name: Build the web app against the deployed API
+        env:
+          VITE_API_BASE: ${{ inputs.api_base }}
+          # No service worker in a packaged app: the bundle is already on disk,
+          # and a precache that outlives an APK update would serve the previous
+          # build's HTML on first launch. See vite.config.ts.
+          VITE_PWA_DISABLED: "1"
+        run: npm run build --workspace @susanin/web
+
+      - name: Check the API base was actually baked in
+        env:
+          API_BASE: ${{ inputs.api_base }}
+        run: |
+          if ! grep -rqF "$API_BASE" apps/web/dist/assets; then
+            echo "::error::VITE_API_BASE ($API_BASE) is not present in the bundle — the app would have no API."
+            exit 1
+          fi
+          echo "API base present in the bundle."
+
+      # A packaged app is not a browser tab: it cannot be pinch-zoomed out of
+      # shape, and the map supplies its own zooming.
+      - name: Set correct viewport
+        shell: node {0}
+        run: |
+          const fs = require("fs");
+          const path = "./apps/web/dist/index.html";
+          const content = fs.readFileSync(path, "utf8");
+          const replaced = content.replace(
+              /<meta[^>]*name="viewport"[^>]*>/,
+              `<meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, height=device-height, viewport-fit=cover">`
+          );
+          if (replaced === content) {
+            console.error("::error::viewport meta not found in " + path);
+            process.exit(1);
+          }
+          fs.writeFileSync(path, replaced);
+
+      - name: Install Capacitor
+        run: npm install -D @capacitor/cli @capacitor/core @capacitor/android
+
+      - name: Disable Capacitor telemetry
+        run: npx cap telemetry off
+
+      # capacitor.config.json at the repo root already points webDir at
+      # apps/web/dist, so nothing here needs to know the monorepo layout.
+      - name: Add the Android platform
+        run: npx cap add android
+
+      - name: Sync files
+        run: npx cap sync android
+
+      - name: Build app bundle
+        run: cd android && gradle bundle
+
+      # A throwaway key, for a build nobody can publish. A Play Store release
+      # needs a real keystore held as a secret — deliberately not wired up here,
+      # because a signing key that lives in a workflow file is not a signing key.
+      - name: Generate a throwaway key store
+        run: >
+          keytool
+          -genkey -noprompt -v
+          -keystore keystore.jks
+          -storepass password
+          -keyalg RSA -keysize 2048
+          -validity 10000
+          -dname "CN=localhost"
+          -alias release
+
+      - name: Sign dev build
+        run: >
+          jarsigner
+          -keystore keystore.jks
+          -storepass password
+          -signedjar ./android/app/build/outputs/bundle/release/app-release-signed.aab
+          ./android/app/build/outputs/bundle/release/app-release.aab
+          release
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: aab-release
+          path: android/app/build/outputs/bundle/release/app-release-signed.aab
+          retention-days: 5
+
+      - name: Download Bundletool
+        run: wget -q https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
+
+      - name: Build APKS
+        run: >
+          java -jar bundletool-all-1.18.3.jar
+          build-apks
+          --bundle=./android/app/build/outputs/bundle/release/app-release-signed.aab
+          --output=./android/app/build/outputs/bundle/release/app-release.apks
+          --mode=universal
+          --overwrite
+          --ks=keystore.jks
+          --ks-pass=pass:password
+          --ks-key-alias=release
+
+      - name: Extract APKS
+        run: unzip ./android/app/build/outputs/bundle/release/app-release.apks -d ./android/app/build/outputs/bundle/release/
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk-release
+          path: android/app/build/outputs/bundle/release/universal.apk
+          retention-days: 5

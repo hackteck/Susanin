@@ -1,0 +1,121 @@
+name: Vercel deploy
+
+# Every push to master ships the site. `workflow_dispatch` stays, for a redeploy
+# with no commit behind it. Pull requests get the checks but not the deploy.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Typecheck and tests run on their own so a pull request gets them without a
+  # Vercel token, and so a red suite stops the deploy rather than following it.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The suite is `node --test` — no framework, no config. The unit tests
+      # (geometry, transliteration) always run; the ones that need Batumi's feed
+      # skip themselves with a reason when it is unreachable, which it is every
+      # night once the fleet stops. See CLAUDE.md.
+      - name: Test
+        run: npm test
+
+  deploy:
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Scoped to this job rather than the workflow. `verify` installs and runs
+    # the dependency tree of whatever a pull request proposes; the deploy token
+    # has no business being in that job's environment.
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Check token
+        run: '[ -n "$VERCEL_TOKEN" ] || { echo "VERCEL_TOKEN is not set"; exit 1; }'
+
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Fetch project name from package.json
+        id: project_name
+        run: echo "PACKAGE_NAME=$(node -p "require('./package.json').name")" >> $GITHUB_OUTPUT
+
+      - name: Disable Vercel telemetry
+        run: npx vercel telemetry disable
+
+      - name: Link Vercel project
+        env:
+          PROJECT_NAME: ${{ steps.project_name.outputs.PACKAGE_NAME }}
+        run: |
+          npx vercel link --yes --project $PROJECT_NAME --token=$VERCEL_TOKEN
+          npx vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+
+      # Unlike surstromming, `vercel.json` is committed here and is NOT written
+      # by this workflow. There it is one rewrite that only the deploy cares
+      # about; here it declares the workspace build, the SPA output directory
+      # and the serverless function that serves /api — project structure rather
+      # than deploy trivia, and something `vercel dev` should see too.
+      - name: Build
+        run: npx vercel build --prod --token=$VERCEL_TOKEN
+
+      # The deployment URL is the last line of stdout; everything else Vercel
+      # prints goes to stderr. Captured rather than piped straight into the
+      # summary, because the next step needs something to curl.
+      - name: Deploy
+        id: deploy
+        run: |
+          URL=$(npx vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN | tail -1)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          printf 'Deployment URL:\n%s\n' "$URL" >> $GITHUB_STEP_SUMMARY
+
+      # A build that succeeds while the function is broken is the failure mode
+      # this catches — the frontend is static and will deploy happily on its
+      # own. `/api/health` reaches all the way to Batumi, so this is genuinely
+      # end to end, and it tolerates a degraded upstream because that is the
+      # feed's night-time state and not a bad deploy.
+      - name: Smoke the deployment
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          echo "checking $URL/api/health"
+          STATUS=$(curl -s -o health.json -w '%{http_code}' --max-time 45 "$URL/api/health") || STATUS=000
+          cat health.json || true
+          echo
+          case "$STATUS" in
+            200) echo "API is up." ;;
+            503) echo "::warning::API reachable but upstream is degraded — deployment kept." ;;
+            *)   echo "::error::/api/health returned $STATUS"; exit 1 ;;
+          esac
+
+      - name: Remove other deployments
+        env:
+          PROJECT_NAME: ${{ steps.project_name.outputs.PACKAGE_NAME }}
+        run: npx vercel remove --safe --yes $PROJECT_NAME --token=$VERCEL_TOKEN || echo "Nothing to remove"

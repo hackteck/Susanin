@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <title>Сусанин — автобусы Батуми в реальном времени</title>
+    <meta
+      name="description"
+      content="Автобусы Батуми на карте в реальном времени: 28 маршрутов, 578 остановок, расписание и время прибытия."
+    />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="stylesheet" href="/globals.css" />
+
+    <!-- Follows the theme, so the phone's status bar matches the app instead of
+         framing a dark map in white. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
+    <!-- The standards-track name first; Chrome warns on the apple-prefixed one,
+         which iOS still needs. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Сусанин" />
+
+    <!-- Shared links: a bus map is exactly the kind of thing people paste into
+         a chat, and the preview is all most of them will see of it. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Сусанин" />
+    <meta property="og:title" content="Сусанин — автобусы Батуми в реальном времени" />
+    <meta
+      property="og:description"
+      content="28 маршрутов, 578 остановок и все автобусы, которые сейчас на линии."
+    />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

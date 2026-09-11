@@ -1,0 +1,11 @@
+{
+  "appId": "dev.hackteck.susanin",
+  "appName": "Susanin",
+  "webDir": "apps/web/dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

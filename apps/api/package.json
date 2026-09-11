@@ -1,0 +1,22 @@
+{
+  "name": "@susanin/api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --experimental-strip-types src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node --experimental-strip-types src/server.ts",
+    "test": "node --test",
+    "test:watch": "node --test --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.13.7",
+    "@hono/node-server": "^2.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "~6.0.2"
+  }
+}

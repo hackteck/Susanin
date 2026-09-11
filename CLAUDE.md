@@ -1,0 +1,476 @@
+# Project decisions & requirements
+
+**Susanin** — a live bus-tracking web app for **Batumi, Georgia**. A Node/TypeScript
+API of our own in front of the city's real-time bus feed, and a Vue 3 frontend
+built entirely from the **surstromming** component library, consumed from npm.
+
+Named for Ivan Susanin, who was famously good at leading people somewhere.
+
+## Repo layout
+
+- **npm workspaces**, two apps:
+  - `apps/api` — `@susanin/api`, Hono on Node. The only thing that talks upstream.
+  - `apps/web` — `@susanin/web`, Vue 3 + Vite SPA. Talks only to our own API.
+- The frontend consumes `@surstromming/*` **from npm**, exactly as any consumer
+  would. It does not vendor, fork or alias them.
+
+## The data source
+
+This took a six-angle search to settle, so the conclusions are written down
+rather than re-derived.
+
+- **Batumi is not on the Georgian `pis-gateway` platform.** That platform
+  (`transit.ttc.com.ge/pis-gateway/api/{v2,v3}`, header `X-api-key`) is real,
+  live and complete — and it serves **Tbilisi only**. It is single-feed, not
+  multi-tenant: no `?city=`, no tenant header, `/agencies`, `/feeds` and
+  `/cities` all 404, every stop id carries the one feed prefix `1:`, and the
+  vendor's own per-city asset tree has `tbilisi/`, `kutaisi/` and `rustavi/`
+  branding but **no `batumi/`**. Every plausible Batumi tenant hostname is
+  NXDOMAIN. Don't re-probe it.
+- **No GTFS exists for Batumi.** Not in the Mobility Database (3513 feeds; the
+  single `GE` row is Georgian Railway), not in Transitous, not anywhere. A live
+  MOTIS query over the Batumi bounding box returns four stops, all rail. So
+  there is no standards-based feed to consume and none to publish against.
+- **The two existing Batumi bus apps are dead backends.**
+  `crm.geogps.ge/batsite/engine/engine.php` (com.thatapp.batumibus) serves a
+  styled 404; `bus.kosourov.ge/get-routes` serves its hosting panel's default
+  page. Both apps still ship on the stores. Don't chase them.
+- **What is live** is a .NET/IIS + MongoDB service behind two JSON endpoints,
+  found by extracting the string table from the `world.newdigital.getbus` APK:
+
+  ```
+  https://thetamaps.site:54321/api/getDbData
+  https://thetamaps.site:54321/api/getBusLocsOnRoute?routeId=<RouteIdGeoGps>
+  ```
+
+  It is **the origin**, not a proxy — `X-Powered-By: ARR/3.0`, its own
+  `Cache-Control` (`max-age=600` for the dataset, `max-age=4` for positions),
+  and a payload byte-identical to what the one community proxy in front of it
+  returns. Its TLS validates, so `fetch` needs no special handling.
+  One layer deeper sits an internal service that these two endpoints front; it
+  is firewalled off from the public internet and we have no use for it, so its
+  address is deliberately not recorded here.
+- **We call the origin, never the community proxy.** A public Cloudflare Worker
+  (`bus-proxy.raf003771.workers.dev`) mirrors both endpoints and is what the
+  community PWA uses. It is one person's free-tier account. Building on it would
+  spend a stranger's quota — 1.27 MB per dataset call — for nothing we can't get
+  ourselves. `UPSTREAM_BASE` can be pointed at it as an emergency fallback; that
+  is the only reason it is mentioned in the code.
+- **Load discipline is a requirement, not an optimisation.** The origin is a
+  small municipal-contractor box, the dataset is 1.27 MB **uncompressed** (it
+  serves no gzip), and positions exist only per-route — "show every bus" is 28
+  upstream calls. Every upstream request therefore goes through one TTL cache
+  with **single-flight** (`lib/cache.ts`), so a hundred simultaneous viewers
+  cost one upstream request per key per TTL. Never call upstream from a request
+  handler directly.
+
+  **Failures are cached too**, briefly. Caching only successes is the trap: an
+  outage then costs *more* than healthy traffic, because every poll re-tries all
+  28 routes and the fetch helper retries each of those again — measured at 56
+  upstream requests per five-second poll against a healthy ceiling of 28 per
+  four. `cache.test.ts` guards it.
+
+  **That ceiling is per process.** The cache is a module singleton, so on Vercel
+  each warm serverless instance has its own and the real bound is multiplied by
+  however many are running. The README says so plainly rather than promising a
+  global number we do not deliver. Fixing it properly means a shared cache or a
+  single long-running instance, and that is the first thing to do if this ever
+  takes real traffic.
+
+### What the feed does and does not give us
+
+`getDbData` (578 stops, 28 routes, 80,568 departure times) gives:
+
+- **stops** — `BusStopIdGeoGps` (Mongo ObjectId), `BusStopNumber` (the physical
+  code painted on the pole), `BusStopNameKA`, `BusStopNameEN`,
+  `BusStopLatitude`/`Longitude`, and a `routes` map.
+- **`routes[routeId]`** on each stop — `Status` (1 = outbound, 2 = inbound),
+  `Order`, and `times` (the day's scheduled departures, `"HH:MM"`).
+  **`Order` is one sequence across both directions**, not per direction:
+  route 2 runs 1..50 outbound then 51..91 inbound. Splitting on `Status` and
+  sorting by `Order` is what yields each direction's stop chain.
+- **`routesNames`** — `RouteNameKA`/`EN` (both just the line number),
+  `RouteIsCircle`, `RouteSortOrder`.
+- **`routeCoordinatesGrouped`** — one polyline per route. It is the **whole
+  round trip**, not per direction: first and last point coincide (measured
+  0.00–0.02 km apart on every route). There is no per-direction geometry.
+- **`routeStatusInfo`** — per direction, the `lowestId`/`highestId` stop, i.e.
+  the terminals. Redundant with `Order` and used only to name headsigns.
+
+`getBusLocsOnRoute` gives `{ Lat, Lon, Status, Name }` per vehicle — `Name` is
+the licence plate and is stable, so it is the vehicle id.
+
+**The polylines are stored in an arbitrary frame.** Some are drawn against the
+direction of travel; some are closed rings whose stored start sits halfway round
+the cycle. Both have to be corrected before a stop chain can be matched to the
+line, and `alignToChain` does it by trying each candidate and keeping the
+tightest fit rather than by guessing what upstream "usually" does. Rotation was
+found by a test, not by inspection: route 12's outbound leg was consuming the
+line all the way to its last vertex, leaving every inbound stop pinned to the end
+**7.4 km** from where it belonged — so that direction could never offer an
+arrival time at all, and nothing on screen said so.
+
+**`Status` is mostly a lie, and this matters more than anything else here.** It
+is documented as 1 = outbound / 2 = inbound, and measured across the whole fleet
+at 23:52 it was **-1 for 137 of 152 vehicles (90%)**. Reading it as a number and
+letting anything that isn't 2 mean "outbound" — which is what the obvious code
+does — puts nine buses in ten on the wrong leg, and the arrival board then has
+nothing to offer anyone travelling the other way. So direction is **inferred
+from geometry**: project the bus onto each direction's stretch of the shape and
+keep whichever is both close and pointing the way the bus is going
+(`vehicles.ts`, `inferDirection`). A bus with no heading yet gets `null`, which
+is the honest answer and also describes a bus that is not moving and therefore
+predicts nothing. Upstream's `Status` is still trusted when it actually says 1
+or 2. *(The 90% figure was measured late at night, when most of the fleet is
+parked; re-measure at midday before drawing conclusions about what -1 means.)*
+
+**A reported bus is not a running bus.** The feed keeps reporting vehicles that
+have finished for the day. `inService` is false once one has not moved for ten
+minutes, with a two-minute grace for a bus we have only just met. Parked buses
+are drawn dimmed rather than hidden — they exist — but they are excluded from
+"N buses running" and from every arrival estimate.
+
+**After about 20:00 the feed returns `[]` for every route.** The fleet stops and
+so does the data. That is correct behaviour, not an outage, and it means live
+markers and countdowns cannot be verified in the evening. For that,
+`tools/stub-upstream.mjs` serves the real dataset with synthetic buses
+walking the real polylines (reporting `Status: -1`, so the inference is
+exercised rather than bypassed); point `UPSTREAM_BASE` at it. **Never leave a
+deployment pointed there.**
+
+**What is missing, and what the app must therefore not promise:**
+
+- **No arrival predictions.** The feed has live GPS and a static timetable and
+  nothing in between. Any "N minutes away" figure is **ours**, derived by
+  projecting the vehicle onto the route polyline and measuring the remaining
+  distance to the stop. It is labelled as an estimate everywhere it appears, and
+  the scheduled time is always shown beside it.
+
+  Five rules make that number honest rather than merely plausible, and each one
+  exists because the naive version is wrong in a specific way:
+
+  1. **It counts down, never up.** The API publishes `arrivesAt` as an instant
+     and the client ticks against a shared one-second clock, so the figure moves
+     between polls instead of standing still and then jumping. A revision that
+     brings the bus *closer* is adopted at once — good news never made anyone
+     miss a bus — while a worse one is eased in at α = 0.25 (`ratchet`).
+  2. **Stops between here and there cost time.** A bus covering 2 km through
+     eight stops is not doing 20 km/h for six minutes; each intervening stop
+     adds a dwell.
+  3. **Standing still is added, not modelled away.** The 10 km/h speed floor
+     otherwise insists a stationary bus is still covering 167 m a minute. Time
+     already spent stopped is added back, and past five minutes the estimate is
+     withdrawn entirely.
+  4. **A bus that has passed is not an arrival.** The distance is deliberately
+     *not* measured round the loop. Batumi's routes are there-and-back, and
+     letting the measurement wrap turns "it left a minute ago" into "arriving in
+     40 minutes" — the same vehicle on its next run, and not the question anyone
+     standing at the pole is asking.
+  5. **Legs whose geometry doesn't hold up publish nothing.** Where the shape
+     and the stop chain disagree — median stop-to-line distance over 120 m,
+     against 5 m typical across the real network — distance along the line is
+     not a quantity worth dividing by a speed.
+
+  Uncertainty is one glyph: a `≈` for a bus we can see but cannot time — either
+  because it is barely moving, or because we have not watched it long enough to
+  have a speed for it yet. A ± range would need a measured error distribution we
+  do not have, and inventing one would look like calibration while communicating
+  nothing. Measured at midday with the tracker warm, **20%** of estimates carry
+  the mark; a freshly started process marks all of them until it has seen the
+  fleet move, which is worth remembering on serverless where every cold instance
+  starts blind.
+- **No heading, no speed, no timestamp** on a vehicle. Heading is derived
+  server-side from consecutive samples, which is why vehicle polling keeps state
+  (`domain/vehicles.ts`); a vehicle seen once has no heading and the marker must
+  render without one.
+- **No trip ids, no per-day service.** One timetable, every day. Don't render a
+  weekday selector.
+- **No occupancy, no fares, no alerts, no accessibility flags.**
+
+### Names, and three locales
+
+`BusStopNameKA` is clean Georgian. `BusStopNameEN` is only genuinely Latin for
+**171 of 578** stops — the rest repeat the Georgian, often prefixed with the
+stop number (`"1963 ბათუმის ყინულის არენა"`). Normalisation therefore strips a
+leading stop number, trims and collapses whitespace, drops a dangling `№` whose
+number was never entered, and falls back to the Georgian when the "English" name
+isn't Latin.
+
+**Russian is the default locale.** Batumi's visitors and a large share of its
+residents read it; a browser that says `ka` or `en` still gets its own language.
+The UI strings are translated properly, including the three plural forms Russian
+needs — `Intl.PluralRules` picks the category, because «5 автобуса» is exactly
+what a cheap translation looks like.
+
+The names are the harder half. Seven stops in ten (407 of 578) have no Latin
+name at all, so
+a Russian reader would otherwise see Georgian script for the stop they are
+standing at. `api/src/domain/translit.ts` therefore renders Georgian into
+Cyrillic at network-build time: 33 letters, one pass, cached with the dataset.
+It is **transliteration, not translation** — it collides the aspirated pairs
+(თ/ტ → т, ქ/კ → к), which is fine for matching a name against a pole. The one
+thing it does translate is a short list of nouns that recur across hundreds of
+names: `ქუჩა` alone appears in **408 of 578**, so "улица" is what makes the rest
+of the line parse as an address. It also moves the street type to the front as
+Russian expects and drops the Georgian genitive `ს` left dangling by the move —
+`ფრიდონ ხალვაშის ქუჩა` becomes `Улица Фридон Халваши`. Words outside the
+dictionary are simply sounded out, which is readable but occasionally clumsy;
+that is the accepted cost, not a bug to chase name by name.
+
+Direction is **never** shown as "outbound/inbound" where a destination is
+available. A rider navigates by where the bus is going, and every arrival row,
+timetable block and direction tab says `→ terminal` instead. This also sidesteps
+the fact that Russian has no natural short pair for the two directions of a route.
+
+Georgian script needs a font that has it — **Geist does not**. The app loads
+`@fontsource-variable/noto-sans-georgian` and overrides `--font-sans` to put it
+after Geist, so Latin keeps Geist and Georgian glyphs resolve properly instead
+of falling back to whatever the OS has. Overriding the custom property is the
+design package's documented runtime escape hatch; the font *loading* is the
+app's, not the library's.
+
+## Frontend rules
+
+**The surstromming CLAUDE.md is authoritative for all UI work.** It ships in the
+[surstromming repo](https://github.com/hackteck/surstromming). Everything there applies here — SFC order,
+`<style module lang="scss">` always, `:class` arrays/objects and never a `cn()`
+joiner, `$style` in templates and `useCssModule()` named `$style` in script,
+hyphenated dynamic class families, tokens only through `design.color()` /
+`spacing()` / `radius()` / `screen()` / `z-index()`, mobile-first, no
+`provide`/`inject`, `defineModel()` for two-way state, data-driven components
+with slots as the escape hatch, no logic-heavy template expressions, and short
+comments that explain a *why*.
+
+App-level conventions mirrored from surstromming's own demo app:
+
+- `main.ts` imports `font-list.scss` then `reset.scss`, runs `initTheme()`
+  before mount, installs Pinia and the router.
+- `App.vue` carries `@include design.layout(...)`; pages are routed into the
+  `default` view and their sidebar into the named `sidebar` view.
+- Pages lazy-load through `lazyPage()` inside `<Suspense>` with `PageLoader` as
+  the fallback.
+- App-wide state is a Pinia store (`stores/sidebar.ts`, `stores/toasts.ts`,
+  plus this app's `stores/transit.ts`); one `Toaster` in `App.vue`.
+- Theme is `data-theme` on `<html>`, dark token values in `public/globals.css`.
+
+**The one deliberate deviation:** surstromming's rule that every page root is
+`<ScrollArea as="main">` is a docs-site convention and is wrong for a map. The
+map page's root is a plain `<main>` that fills the shell and clips
+(`overflow: hidden`) — a map owns its own gestures and must not sit in a
+scroller. Every other page keeps `<ScrollArea as="main">`.
+
+**If a bug turns up in a surstromming package:** flag it, add
+`../surstromming/packages/*` to this repo's root `workspaces` (npm resolves a
+relative path across repos), fix it there, re-verify against the source, and
+publish only after review. Don't patch around it in this app.
+
+## Map
+
+**Leaflet with OpenStreetMap raster tiles.** No API key, no vendor account, and
+attribution is a link. MapLibre was the alternative and was rejected: vector
+tiles need a keyed provider, which this app has no way to pay for. The map is
+not a surstromming component and never will be — it's an app concern.
+
+Leaflet is imperative and owns its DOM subtree, so it is wrapped in exactly one
+component (`components/map/TransitMap.vue`) that takes data as props and emits
+intent, like any other data-driven component here. Nothing else in the app
+imports `leaflet`.
+
+Three things that component learned the hard way, all of them the same lesson —
+Leaflet owns real DOM, and a declarative framework must keep its hands off it:
+
+- **Never bind a reactive `:class` to the element Leaflet mounts into.** Leaflet
+  adds `leaflet-container` and friends imperatively; a Vue class patch on the
+  same element removes them. Measured: on the first zoom every tile kept its
+  `src` and lost its width, so the map went blank while the markers stayed
+  exactly where they belonged. The component is therefore two elements — an
+  outer one Vue styles, an inner one Leaflet owns.
+- **Never call `setIcon` to update a marker.** It replaces the DOM node, and a
+  new node has no previous transform to animate from, so the CSS glide silently
+  never fires and every bus teleports. Markers are created once and mutated
+  (`--hue`, `--heading`, the label) thereafter.
+- **Leaflet only re-reads its size on a *window* resize.** The sidebar
+  collapsing is not one. A `ResizeObserver` on the container calls
+  `invalidateSize`.
+
+The vehicle marker is a coloured pill carrying the route number — the number is
+the bus's identity, and a generic glyph would say less — with a nose on its
+leading edge for heading, and a bus glyph only once there is room for it
+(zoom ≥ 16). Below zoom 13 it collapses to a dot, because a route number that
+cannot be read is just clutter. Bearings are accumulated rather than wrapped, so
+359° → 1° turns 2° forward instead of spinning 358° backward. Markers glide for
+one full poll interval (`--glide`, wired from the store's `POLL_MS`) so a bus
+moves continuously; the glide is dropped during a zoom, which rewrites every
+transform at once. The cost is that a bus trails reality by up to a poll, which
+is accepted: dead reckoning along the polyline would sail buses through red
+lights and then snap them back.
+
+Motion tokens live in `src/styles/_motion.scss`, along with the list of what
+must **not** animate — the countdown may cross-fade but never slide, route
+polylines never animate at all, and only the soonest live row pulses.
+
+## Route colours
+
+The feed has no route colours and 28 routes is far past the 5-step categorical
+palette in `design`. So the **API assigns each route a stable hue** (an integer,
+spread over the wheel by `sortOrder`) and the **frontend supplies lightness and
+chroma from theme tokens** — `oklch(var(--route-l) var(--route-c) <hue>)`. One
+number crosses the wire, the theme still decides how dark it is, and no colour
+is hardcoded in a component.
+
+## Our API
+
+The frontend never sees an upstream shape. `GET /api/*`:
+
+    GET /api/health                      liveness + upstream reachability
+    GET /api/routes                      all routes, sorted
+    GET /api/routes/:id                  route + both directions' stop chains + shape
+    GET /api/stops                       all stops (optionally ?bbox=s,w,n,e)
+    GET /api/stops/:id                   stop + per-route scheduled departures
+    GET /api/stops/:id/arrivals          next scheduled times + live estimates
+    GET /api/vehicles?routes=a,b         live vehicles, heading derived
+
+Cache TTLs: the dataset 10 minutes (upstream says 600), vehicles 4 seconds
+(upstream says 4). Both are single-flighted.
+
+## Installable, and offline
+
+The web app is a PWA (`vite-plugin-pwa`, Workbox). Installing it is not the
+point — **the offline timetable is**. Standing at a pole in Batumi with one bar
+of signal, the useful question is "when is the last bus", and that answer does
+not need the network.
+
+What is cached, and why each choice is deliberate:
+
+- **The network** (`/api/routes`, `/api/stops`, `/api/stops/:id`) —
+  stale-while-revalidate, 14 days. It changes about once a year, so serving it
+  from cache costs nothing and buys the whole offline story.
+- **Map tiles** — cache-first, capped at 500 entries and 7 days. Tiles are the
+  one thing that could quietly fill a phone.
+- **Live positions and arrivals are deliberately NOT cached.** A cached bus is
+  worse than no bus, because it looks current. With the feed unreachable the
+  arrival board says so in as many words (`liveUnavailable`) rather than falling
+  through to "no more today" — which is what it did before, and which told a
+  rider the service had ended when the truth was that we could not see.
+
+Icons are generated, not hand-drawn: `tools/icon.html` renders them and the
+browser screenshots the element (element-level, because a window has a minimum
+width and a viewport shot came out 984 px wide). Regenerate them the same way.
+
+## Android
+
+`.github/workflows/build-android.yml` wraps the built SPA with Capacitor
+(manual dispatch only; the web app is the product). Two things make it differ
+from the web build, and both are easy to get wrong:
+
+- **The API base must be absolute.** On the web the SPA and the API share an
+  origin and the client uses a relative `/api`. Inside Capacitor the bundle is
+  served from `https://localhost`, where that path resolves to nothing — so the
+  workflow takes the deployed API's URL as an input, bakes it in through
+  `VITE_API_BASE`, and then **greps the bundle to prove it landed**. A build
+  that silently shipped without it would install fine and show nothing.
+- **CORS.** The packaged app *is* cross-origin, so `https://localhost` and
+  `capacitor://localhost` are in the API's default `allowedOrigins`.
+
+The keystore in that workflow is a throwaway for an unpublishable build. A real
+release needs a keystore held as a secret; that is deliberately not wired up,
+because a signing key that lives in a workflow file is not a signing key.
+
+## Finding a stop
+
+Two ways, both entirely client-side over the 578 stops already in the store:
+
+- **Search** (sidebar, every page) matches the pole number *or* a name fragment
+  in **all three locales at once** — someone reading the Russian UI may still be
+  typing what is printed on the pole in Georgian. A numeric query matches the
+  code alone and ranks exact hits first, because the code is the only handle
+  that is unambiguous: 74 names are shared by more than one stop.
+- **From a stop to its routes.** The stop page opens with a chip per route
+  through it, and pressing one lands on the map with **only that route** drawn.
+  It sets the selection and navigates — the selection *is* the map's state, so
+  there is no route id in the URL and nothing new to keep in sync.
+- **The chosen stop is drawn differently** — bigger, and filled with the inverse
+  of an ordinary stop rather than a new colour, because the 28 route hues
+  already own colour on this map and a twenty-ninth would just join them. It is
+  drawn last so it sits above the ordinary stop that may be metres away, and at
+  **every** zoom: a highlight that vanishes on zooming out while its arrival
+  panel stays open reads as the map losing track of it.
+- **Nearby** (`/nearby`) sorts stops by straight-line distance from a one-shot
+  geolocation fix, capped at 1.2 km. It says **"straight-line"** in the UI and
+  means it — Batumi has a river, a rail line and a port, and there is no
+  pedestrian graph here to route around them. Distance leads the row, because at
+  a kerb "how far" is the question and the name only matters once you have
+  chosen.
+
+## Deploy
+
+`.github/workflows/vercel.yml` — every push to `master`, plus manual dispatch
+for a redeploy with no commit behind it. It follows surstromming's Vercel
+prebuilt flow (`link --project <package.json name>` → `pull` → `build --prod` →
+`deploy --prebuilt --prod`, then `remove --safe`) and needs the same
+`VERCEL_TOKEN` secret. Three things differ, each for a reason:
+
+- **`vercel.json` is committed here, and the workflow does not write it.** In
+  surstromming it is one rewrite that only the deploy cares about. Here it
+  declares the workspace build command, the SPA output directory *and* the
+  serverless function that serves `/api` — that is project structure, and
+  `vercel dev` should see it too.
+- **Typecheck and tests gate the deploy**, in a `verify` job that also runs on
+  pull requests (where it needs no token). A red suite should stop a release,
+  not follow it.
+- **The deployment is smoke-tested after it ships.** The frontend is static and
+  will deploy happily while the function is broken, so the workflow curls
+  `/api/health` on the new URL. A 503 is a warning, not a failure: that is the
+  feed's night-time state, not a bad deploy.
+
+Two settings that are easy to get wrong:
+
+- **`functions.maxDuration` must exceed `UPSTREAM_TIMEOUT_MS`.** A cold
+  invocation fetches the whole 1.27 MB dataset before it can answer anything.
+  The default 15 s upstream budget is longer than Vercel's legacy 10 s function
+  limit, so `vercel.json` sets 30 s. If the account's plan rejects that, lower
+  it *and* lower `UPSTREAM_TIMEOUT_MS` with it — otherwise the platform kills
+  the request mid-fetch and the caller gets a 504 instead of our 502.
+- **Region.** The upstream is in Georgia and the default Vercel region is US
+  East, which puts an ocean in front of every cold start. Set the project's
+  region to `fra1` (or nearer) in the Vercel dashboard — `regions` in
+  `vercel.json` is a paid-plan field, so it is deliberately not set here.
+
+No environment variables are required: every value in `config.ts` has a working
+default, and the frontend is same-origin with the API so no CORS entry is needed.
+
+## Workflow
+
+- **The API is tested; the UI is not.** `npm test` runs Node's built-in runner
+  (`node --test`) — no framework, no config, no dependency, and it strips the
+  TypeScript itself. Tests are `*.test.ts` beside the code they cover, so
+  `tsconfig` already typechecks them and discovery needs no glob.
+  The UI stays manually verified in the browser over Chrome DevTools Protocol on
+  port 9222, per surstromming's rule.
+
+  The split is not arbitrary. The API's value is in things that are *invisible
+  when wrong*: whether a bus is matched to the right leg of its route, whether a
+  transliteration leaves Georgian behind, whether an estimate counts down. None
+  of that shows up in a screenshot. What a screenshot does show — hierarchy,
+  colour, motion — is where the UI's value is, and asserting on it in code is
+  how you get tests that break on every honest change.
+
+- **A test that cannot fail is documentation with a spinner.** Every guard here
+  was checked by breaking the thing it guards and confirming it goes red. That
+  is not a formality: the first version of the map-matching guard counted
+  out-of-order stops, and deleting the entire shape-orientation fix left it
+  happily green — `matchChain` walks forward only, so it *cannot* emit an
+  out-of-order result however wrong the shape is. The metric became the fit
+  (median metres from a stop to the line it matched to), which moves from 5 m to
+  infinity under the same mutation. Do the same for anything added here.
+
+- **Live tests skip rather than fail when upstream is asleep.** After about
+  20:00 the feed returns nothing and the host is sometimes unreachable; a red
+  suite at midnight teaches people to ignore the suite. `app.test.ts` and
+  `network.test.ts` probe once and skip with a reason.
+
+- The smoke tests run through `app.fetch` directly rather than over a socket. A
+  Hono app is a fetch handler, so this exercises the real routing, the real
+  cache and the real upstream with no server to start and no port to collide.
+
+- Comments explain a non-obvious *why*, never narrate the code.

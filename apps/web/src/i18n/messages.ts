@@ -1,0 +1,166 @@
+export type Locale = 'ru' | 'ka' | 'en'
+
+/** Georgian is the city's language, Russian is what most visitors read. */
+export const locales: Locale[] = ['ru', 'ka', 'en']
+
+export const localeNames: Record<Locale, string> = {
+  ru: 'Русский',
+  ka: 'ქართული',
+  en: 'English',
+}
+
+/** Two letters for the switcher — the language in its own script. */
+export const localeShort: Record<Locale, string> = {
+  ru: 'RU',
+  ka: 'ქა',
+  en: 'EN',
+}
+
+// Every string the UI says in its own voice. Names that come from the feed are
+// localised separately — see `useLocale().name`.
+export const messages = {
+  appName: { ru: 'Сусанин', ka: 'სუსანინი', en: 'Susanin' },
+  tagline: {
+    ru: 'Автобусы Батуми в реальном времени',
+    ka: 'ბათუმის ავტობუსები რეალურ დროში',
+    en: 'Batumi buses, live',
+  },
+
+  map: { ru: 'Карта', ka: 'რუკა', en: 'Map' },
+  routes: { ru: 'Маршруты', ka: 'მარშრუტები', en: 'Routes' },
+  routeLabel: { ru: 'Маршрут', ka: 'მარშრუტი', en: 'Route' },
+  stops: { ru: 'Остановки', ka: 'გაჩერებები', en: 'Stops' },
+  about: { ru: 'О проекте', ka: 'პროექტის შესახებ', en: 'About' },
+
+  allRoutes: { ru: 'Все маршруты', ka: 'ყველა მარშრუტი', en: 'All routes' },
+  clearSelection: { ru: 'Сбросить', ka: 'გასუფთავება', en: 'Clear' },
+  onTheRoad: { ru: 'на линии', ka: 'ხაზზე', en: 'running' },
+  noBuses: {
+    ru: 'Сейчас на маршруте нет автобусов',
+    ka: 'ამ მარშრუტზე ავტობუსი არ ჩანს',
+    en: 'No buses on this route right now',
+  },
+
+  // Abstract direction labels are a last resort: a destination is what a rider
+  // actually navigates by, so the UI says "→ terminal" wherever it has one.
+  outbound: { ru: 'Прямой', ka: 'პირდაპირ', en: 'Outbound' },
+  inbound: { ru: 'Обратный', ka: 'უკან', en: 'Inbound' },
+
+  scheduled: { ru: 'По расписанию', ka: 'განრიგით', en: 'Scheduled' },
+  live: { ru: 'Сейчас', ka: 'ცოცხალი', en: 'Live' },
+  estimateNote: {
+    ru: 'Время рассчитано по текущему положению автобуса — это не официальный прогноз.',
+    ka: 'დროის შეფასება გამოთვლილია ავტობუსის ამჟამინდელი მდებარეობიდან — ეს არ არის ოფიციალური პროგნოზი.',
+    en: 'Times are computed from each bus’s current position — they are not official predictions.',
+  },
+  minutesShort: { ru: 'мин', ka: 'წთ', en: 'min' },
+  // What a countdown says once it runs out. Not "0 min" — the bus is at the kerb.
+  approaching: { ru: 'Подъезжает', ka: 'მოდის', en: 'Due' },
+  firstBusTomorrow: { ru: 'Первый завтра', ka: 'პირველი ხვალ', en: 'First tomorrow' },
+  noService: { ru: 'Сегодня больше нет', ka: 'დღეს აღარ არის', en: 'No more today' },
+
+  // The several different nothings. Rendering one string for all of them tells
+  // a rider the service has ended when the truth may be that we cannot see it.
+  noRoutesHere: {
+    ru: 'Через эту остановку маршруты не проходят',
+    ka: 'აქ მარშრუტები არ გადის',
+    en: 'No routes serve this stop',
+  },
+  noTimetable: {
+    ru: 'Расписание не опубликовано — только живое отслеживание',
+    ka: 'განრიგი არ არის გამოქვეყნებული — მხოლოდ ცოცხალი თვალყური',
+    en: 'No published timetable — live tracking only',
+  },
+  liveLabel: { ru: 'в реальном времени', ka: 'რეალურ დროში', en: 'live' },
+  // The fifth kind of nothing: not "no buses", but "we cannot see them".
+  // Offline, this is the difference between a timetable and a wrong answer.
+  liveUnavailable: {
+    ru: 'Живые данные недоступны — показано расписание',
+    ka: 'ცოცხალი მონაცემები მიუწვდომელია — ნაჩვენებია განრიგი',
+    en: 'Live data unavailable — showing the timetable',
+  },
+
+  searchStops: { ru: 'Поиск остановки', ka: 'გაჩერების ძებნა', en: 'Search stops' },
+  noResults: { ru: 'Ничего не найдено', ka: 'ვერაფერი მოიძებნა', en: 'Nothing found' },
+  nearMe: { ru: 'Рядом', ka: 'ჩემთან ახლოს', en: 'Nearby' },
+  nearbyStops: { ru: 'Остановки рядом', ka: 'ახლომდებარე გაჩერებები', en: 'Stops near you' },
+  locating: { ru: 'Определяем местоположение…', ka: 'მდებარეობის დადგენა…', en: 'Locating…' },
+  locationDenied: { ru: 'Местоположение недоступно', ka: 'მდებარეობა მიუწვდომელია', en: 'Location unavailable' },
+  metresAway: { ru: 'м', ka: 'მ', en: 'm' },
+  kilometresAway: { ru: 'км', ka: 'კმ', en: 'km' },
+  walkMinutes: { ru: 'мин пешком', ka: 'წთ ფეხით', en: 'min walk' },
+  noNearbyStops: {
+    ru: 'Рядом остановок не нашлось',
+    ka: 'ახლოს გაჩერებები არ მოიძებნა',
+    en: 'No stops within walking distance',
+  },
+  // Said plainly, because Batumi has a river, a rail line and a port: the
+  // straight line to a stop is not always a route to it.
+  straightLineNote: {
+    ru: 'Расстояние по прямой — реальный путь может быть длиннее.',
+    ka: 'მანძილი პირდაპირი ხაზით — რეალური გზა შეიძლება უფრო გრძელი იყოს.',
+    en: 'Straight-line distance — the walk itself may be longer.',
+  },
+
+  stopNumber: { ru: 'Остановка №', ka: 'გაჩერება №', en: 'Stop no.' },
+  timetable: { ru: 'Расписание', ka: 'განრიგი', en: 'Timetable' },
+  timetableNote: {
+    ru: 'Единое расписание на все дни — источник не разделяет дни недели.',
+    ka: 'ერთი განრიგი ყოველდღე — წყარო დღეებს არ ჰყოფს.',
+    en: 'One timetable for every day — the source does not separate weekdays.',
+  },
+  everyMinutes: { ru: 'интервал', ka: 'ინტერვალი', en: 'every' },
+
+  loading: { ru: 'Загрузка…', ka: 'იტვირთება…', en: 'Loading…' },
+  loadFailed: { ru: 'Не удалось загрузить данные', ka: 'მონაცემები ვერ ჩაიტვირთა', en: 'Could not load data' },
+  loadFailedDetail: {
+    ru: 'Транспортная служба Батуми сейчас не отвечает. Попробуйте ещё раз через минуту.',
+    ka: 'ბათუმის სატრანსპორტო სერვისი არ პასუხობს. სცადეთ ერთი წუთის შემდეგ.',
+    en: 'Batumi’s transit service is not answering right now. Try again in a minute.',
+  },
+  retry: { ru: 'Повторить', ka: 'ხელახლა', en: 'Retry' },
+  notFound: { ru: 'Страница не найдена', ka: 'გვერდი ვერ მოიძებნა', en: 'Page not found' },
+  backToMap: { ru: 'Вернуться к карте', ka: 'რუკაზე დაბრუნება', en: 'Back to the map' },
+  close: { ru: 'Закрыть', ka: 'დახურვა', en: 'Close' },
+  showOnMap: { ru: 'На карте', ka: 'რუკაზე', en: 'Show on map' },
+  routesThrough: {
+    ru: 'Маршруты через остановку',
+    ka: 'მარშრუტები ამ გაჩერებაზე',
+    en: 'Routes through this stop',
+  },
+
+  toggleTheme: { ru: 'Сменить тему', ka: 'თემის შეცვლა', en: 'Toggle theme' },
+  toggleSidebar: { ru: 'Показать панель', ka: 'პანელის ჩვენება', en: 'Toggle sidebar' },
+  language: { ru: 'Язык', ka: 'ენა', en: 'Language' },
+  followMe: { ru: 'Моё местоположение', ka: 'ჩემი მდებარეობა', en: 'My location' },
+} as const satisfies Record<string, Record<Locale, string>>
+
+export type MessageKey = keyof typeof messages
+
+/**
+ * Counted nouns, by CLDR plural category. Russian needs three forms and gets
+ * them wrong in an obvious, cheap-looking way if you skip this
+ * («5 автобуса»); Georgian never inflects after a numeral, and English has two.
+ * `Intl.PluralRules` picks the category so none of that logic lives here.
+ */
+type PluralForms = Partial<Record<Intl.LDMLPluralRule, string>> & { other: string }
+
+export const counted = {
+  buses: {
+    ru: { one: 'автобус', few: 'автобуса', many: 'автобусов', other: 'автобуса' },
+    ka: { other: 'ავტობუსი' },
+    en: { one: 'bus', other: 'buses' },
+  },
+  routes: {
+    ru: { one: 'маршрут', few: 'маршрута', many: 'маршрутов', other: 'маршрута' },
+    ka: { other: 'მარშრუტი' },
+    en: { one: 'route', other: 'routes' },
+  },
+  stops: {
+    ru: { one: 'остановка', few: 'остановки', many: 'остановок', other: 'остановки' },
+    ka: { other: 'გაჩერება' },
+    en: { one: 'stop', other: 'stops' },
+  },
+} as const satisfies Record<string, Record<Locale, PluralForms>>
+
+export type CountedKey = keyof typeof counted

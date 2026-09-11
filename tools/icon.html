@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body { margin: 0; padding: 0; background: transparent; }
+      .icon {
+        display: grid;
+        place-items: center;
+        width: var(--size);
+        height: var(--size);
+        background: linear-gradient(160deg, oklch(0.62 0.18 258), oklch(0.5 0.2 268));
+      }
+      /* A plain square for maskable: the launcher applies its own mask, and a
+         rounded corner baked in shows as a dark rim inside a circular mask. */
+      .rounded { border-radius: calc(var(--size) * 0.22); }
+      svg { width: var(--glyph); height: var(--glyph); color: #fff; }
+    </style>
+  </head>
+  <body>
+    <div class="icon" id="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 17h14M5 6h14M5 6v11M19 6v11M9 6v5h6V6" />
+        <circle cx="8" cy="19.2" r="1.5" />
+        <circle cx="16" cy="19.2" r="1.5" />
+      </svg>
+    </div>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const size = Number(params.get('size') || 512);
+      const maskable = params.get('maskable') === '1';
+      const icon = document.getElementById('icon');
+      icon.style.setProperty('--size', size + 'px');
+      // Maskable icons must keep their content inside the middle 80%, because
+      // the launcher can crop to a circle.
+      icon.style.setProperty('--glyph', Math.round(size * (maskable ? 0.42 : 0.62)) + 'px');
+      if (!maskable) icon.classList.add('rounded');
+      document.body.style.width = size + 'px';
+      document.body.style.height = size + 'px';
+    </script>
+  </body>
+</html>
