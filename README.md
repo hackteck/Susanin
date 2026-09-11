@@ -162,4 +162,4 @@ Please keep it that way.
 
 Map tiles © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
 
-MIT.
+Copyright © 2026 Evgeniy Mnatsakanov. GPL-3.0-or-later — see [LICENSE](LICENSE).
