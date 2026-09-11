@@ -546,7 +546,24 @@ prebuilt flow (`link --project <package.json name>` → `pull` → `build --prod
   only a warning, but only when the body is *our* `degraded` — a platform 503 is
   a crashed function, not Batumi's feed being asleep.
 
-Three settings that are easy to get wrong:
+Four settings that are easy to get wrong:
+
+- **`api/index.ts` must default-export `{ fetch }`, not the handler itself, and
+  it must be reachable at more than one path.** Both halves of this failed
+  silently on the first real deploy. `handle(app)` from `hono/vercel` is a bare
+  function taking a web `Request`; a default-exported *function* is exactly what
+  Vercel reads as a Node `(req, res)` handler, so it was invoked with an
+  `IncomingMessage`, Hono never recognised it, nothing was written to the
+  response, and the invocation sat there until `maxDuration` — a 30-second
+  timeout rather than an error. An object with a `fetch` method is how Vercel is
+  told this is a web handler. Separately, the filesystem matches
+  `api/index.ts` to the exact path `/api` and nothing else, and Vercel checks the
+  filesystem *before* rewrites — so `/api/health` matched no file, fell through
+  to a rewrite list that deliberately excluded `api/`, and got Vercel's own
+  `NOT_FOUND`. The `/api/(.*) → /api` rewrite fixes that and keeps the URL, so
+  Hono still sees `/api/health` and its `basePath` still matches. `/api` itself
+  now answers Hono's own fast 404, which is correct: no route is mounted there.
+
 
 - **There is a `tsconfig.json` at the repo root, and it exists solely for
   Vercel.** The function builder walks up from `api/index.ts` with
