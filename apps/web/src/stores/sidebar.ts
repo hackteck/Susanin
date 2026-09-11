@@ -13,5 +13,17 @@ export const useSidebar = defineStore('sidebar', () => {
 
   const toggle = () => open.value = !open.value
 
-  return { open, toggle }
+  /**
+   * Put the drawer away after doing something that moves the reader elsewhere.
+   * On a phone the sidebar is a drawer over a backdrop, so navigating without
+   * this leaves the page it just opened behind an overlay — the only thing still
+   * visible being the sidebar that was supposed to be finished with. On desktop
+   * it is a permanent panel and closing it would be a second change nobody asked
+   * for, which is why this is not just `open.value = false`.
+   */
+  const closeOnMobile = () => {
+    if (isMobile.value) open.value = false
+  }
+
+  return { open, toggle, closeOnMobile }
 })

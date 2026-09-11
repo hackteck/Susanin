@@ -124,51 +124,10 @@ jobs:
           echo "url=$URL" >> $GITHUB_OUTPUT
           echo "Deployment: $URL" >> $GITHUB_STEP_SUMMARY
 
-      # A build that succeeds while the function is broken is the failure mode
-      # this catches — the frontend is static and will deploy happily on its
-      # own. `/api/health` reaches all the way to Batumi, so this is genuinely
-      # end to end, and it tolerates a degraded upstream because that is the
-      # feed's night-time state and not a bad deploy.
-      #
-      # `vercel curl` carries the deployment-protection bypass itself, which is
-      # what lets this reach the deployment at all: a plain curl against a
-      # deployment URL gets Vercel's login page, because Standard Protection
-      # covers exactly that URL and leaves only the production domain public.
-      # Asking the CLI is the whole point — the alternative was recovering the
-      # production alias out of `vercel inspect --json` or off the deploy log,
-      # and neither is a contract worth gating a release on.
-      #
-      # It targets the deployment just built rather than production, and that is
-      # the deliberate trade: this answers "does the thing we just made work",
-      # and no longer notices a deploy that was never promoted. A promotion
-      # failure is visible in the dashboard; a broken function is not.
-      #
-      # `vercel curl` is beta, so this is built not to trust it: the body is the
-      # signal, never the exit code and never a status line. If the command
-      # breaks outright the body is empty and the step fails, which is the right
-      # way round for a release gate.
-      - name: Smoke the deployment
-        env:
-          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
-        run: |
-          echo "checking $DEPLOYMENT_URL/api/health"
-          npx vercel curl --deployment "$DEPLOYMENT_URL" /api/health --yes --token=$VERCEL_TOKEN >health.json 2>health.err || true
-          cat health.err >&2 || true
-          head -c 1000 health.json || true
-          echo
+      # No smoke test: Deployment Protection covers the generated deployment URL,
+      # so the URL a new deployment has is the one an unauthenticated request
+      # cannot reach. See CLAUDE.md.
 
-          # Our own payload is the only thing that tells a healthy API apart
-          # from a login interstitial, which is HTML and answers 200.
-          if grep -q '"status":[[:space:]]*"ok"' health.json; then
-            echo "API is up."
-          elif grep -q '"status":[[:space:]]*"degraded"' health.json; then
-            # Ours says `degraded` in the body. A crashed or timed-out function
-            # does not, and that is a bad deploy rather than Batumi asleep.
-            echo "::warning::API reachable but upstream is degraded — deployment kept."
-          else
-            echo "::error::$DEPLOYMENT_URL/api/health did not answer with our health payload. If the body above is HTML the protection bypass did not apply — check that this CLI version still has 'vercel curl' and that the project is linked. The deployment is left up."
-            exit 1
-          fi
       - name: Remove other deployments
         env:
           PROJECT_NAME: ${{ steps.project_name.outputs.PACKAGE_NAME }}

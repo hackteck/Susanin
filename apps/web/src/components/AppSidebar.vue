@@ -1,6 +1,6 @@
 <template>
   <Sidebar v-model:open="sidebar.open">
-    <SidebarGroup :items="navItems" @select="go" />
+    <SidebarGroup :items="navItems" @select="navigate" />
     <Separator />
     <StopSearch />
     <Separator />
@@ -23,6 +23,13 @@ import { useTransit } from "@/stores/transit";
 import { go } from "@/router";
 
 const sidebar = useSidebar();
+
+// Navigating from the drawer has to close it: on a phone the page it just
+// opened is behind the backdrop otherwise.
+const navigate = (value: string) => {
+  go(value);
+  sidebar.closeOnMobile();
+};
 const locale = useLocale();
 const route = useRoute();
 

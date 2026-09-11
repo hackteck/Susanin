@@ -47,7 +47,6 @@ import { MapPin } from "lucide";
 import { Button } from "@surstromming/button";
 import { Icon } from "@surstromming/icon";
 import { Input } from "@surstromming/input";
-import { isMobile } from "@surstromming/util";
 import { useStopSearch } from "@/composables/useStopSearch";
 import { useLocale } from "@/stores/locale";
 import { useProximity } from "@/stores/proximity";
@@ -71,7 +70,8 @@ const togglePick = async () => {
   }
   proximity.arm();
   if (route.path !== "/") await router.push("/");
-  if (isMobile.value) sidebar.open = false;
+  // The drawer is covering the very thing we just asked the reader to tap.
+  sidebar.closeOnMobile();
 };
 
 // A stop found by name did not come from a proximity list, so it must not
@@ -79,6 +79,7 @@ const togglePick = async () => {
 const onResult = () => {
   query.value = "";
   proximity.clearOrigin();
+  sidebar.closeOnMobile();
 };
 </script>
 

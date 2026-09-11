@@ -538,27 +538,21 @@ prebuilt flow (`link --project <package.json name>` → `pull` → `build --prod
   `/api/health` on the new URL. A 503 is a warning, not a failure: that is the
   feed's night-time state, not a bad deploy.
 
-- **The smoke test goes through `vercel curl`, not through `curl`.** Vercel's
-  Standard Protection — the only tier on the free plan — protects the generated
-  `susanin-<hash>.vercel.app` deployment URL and leaves only the production
-  domain public, so a plain curl at the thing we just deployed reaches a login
-  page rather than the API. `vercel curl --deployment <url> /api/health` carries
-  the protection bypass itself: no alias to resolve, no bypass secret in the
-  repo, and nothing scraped out of the CLI's output. The first fix for this did
-  recover the production alias — out of `vercel inspect --json`, with the deploy
-  log's `Aliased` row as a fallback — and asking the CLI to make the request is
-  simply better than asking it where to send one.
-
-  Two consequences worth knowing. It smoke-tests **the deployment, not
-  production**, so it no longer notices a deploy that succeeded and was never
-  promoted; that failure is loud in the dashboard, whereas a broken function is
-  not, so this is the right way round. And `vercel curl` is beta, so the check
-  deliberately does not trust it: the branch is on **our own health payload**,
-  never on an exit code or a status line. A login interstitial is HTML and
-  answers 200, so a status code was never the real signal anyway; and if the
-  command breaks outright the body is empty and the step fails. A 503 is still
-  only a warning, but only when the body is *our* `degraded` — a platform 503 is
-  a crashed function, not Batumi's feed being asleep.
+- **There is no post-deploy smoke test, and that is a decision.** Vercel's
+  Deployment Protection covers the *generated* deployment URL and leaves only the
+  production domain public — so the URL a fresh deployment has is precisely the
+  one an unauthenticated request cannot reach; measured, it answers 302 to
+  `vercel.com/sso-api`. Two ways round it were tried and both cost more than the
+  check was worth: resolving the production alias back out of `vercel inspect
+  --json` or the deploy log, and `vercel curl`, which does carry the bypass but
+  forwards everything after the path to real curl (`curl: option --token=*** is
+  unknown`). The cheap version, if it is ever wanted back, is the one genuinely
+  public thing: `curl -fsS https://susanin-batumi.vercel.app/api/health`, which
+  needs no CLI, no parsing and no secret — only the production domain written
+  down, which is what was being avoided. What is lost meanwhile is real: the
+  frontend is static and deploys happily while the function is broken, so a dead
+  API now ships quietly. That is exactly how `/api` shipped returning nothing at
+  all, twice.
 
 Four settings that are easy to get wrong:
 
