@@ -10,6 +10,7 @@
       :picking="proximity.pickMode"
       :picked-point="pickedPoint"
       :fly-to="flyTo"
+      :sources="basemapSources"
       :lang="locale.locale"
       :dark="theme === 'dark'"
       :glide-ms="transit.POLL_MS"
@@ -137,6 +138,7 @@ import { ScrollArea } from "@surstromming/scroll-area";
 import { Spinner } from "@surstromming/spinner";
 import { isMobile } from "@surstromming/util";
 import TransitMap, { type MapFlyTo, type MapShape, type MapView } from "@/components/map/TransitMap.vue";
+import { cacheArchives, loadManifest, openArchive, type ArchiveSource } from "@/components/map/archives";
 import ArrivalBoard from "@/components/ArrivalBoard.vue";
 import StopDistanceRow from "@/components/StopDistanceRow.vue";
 import { useArrivals } from "@/composables/useArrivals";
@@ -156,6 +158,20 @@ const now = useNow();
 const { theme } = useTheme();
 
 await transit.loadNetwork();
+
+// The archives are read from the browser's own storage once they have been there
+// once. Resolved before the map is built — an IndexedDB lookup, not a download —
+// so the map never starts on the network and then swaps underneath the reader.
+const base = import.meta.env.BASE_URL;
+const manifest = await loadManifest(base);
+const basemapSources = ref<{ detail: ArchiveSource; overview: ArchiveSource } | null>(null);
+
+if (manifest) {
+  basemapSources.value = {
+    detail: await openArchive(base, manifest.archives.detail!),
+    overview: await openArchive(base, manifest.archives.overview!),
+  };
+}
 
 const stopWatching = transit.watchVehicles();
 onUnmounted(stopWatching);
@@ -292,6 +308,8 @@ const onKeydown = (event: KeyboardEvent) => {
 
 onMounted(() => {
   window.addEventListener("keydown", onKeydown);
+  // After the map is up, never before it: this is for the next visit.
+  if (manifest) void cacheArchives(base, manifest);
   // Only ever acts when permission is already granted — an automatic prompt is
   // how an app teaches people to press Block.
   void proximity.init();

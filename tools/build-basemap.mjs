@@ -14,7 +14,7 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gunzipSync, inflateRawSync } from 'node:zlib'
 
@@ -47,14 +47,55 @@ const PLANET_URL = `https://build.protomaps.com/${PLANET_BUILD}.pmtiles`
 const BBOX = { west: 41.5, south: 41.55, east: 41.78, north: 41.75 }
 const BOUNDS_SOURCE = join(ROOT, 'apps/web/src/components/map/TransitMap.vue')
 
+// A second, deliberately coarse archive, and the reason it exists is that the
+// rectangle above stops at the network's edge. That is right for the zooms where
+// stops and buses are drawn and wrong the moment anyone zooms out: at z11 a
+// 2559px screen shows 1.76 degrees of longitude against that rectangle's 0.28,
+// and the rest came out as a grey void around the city.
+//
+// Covering that view is affordable only because of where the cost actually sits.
+// Measured against the same planet build: a z0-13 cut of this rectangle is about
+// 12 MB, a z0-12 cut is 4.97 MB. Nearly all of it is z13. The renderer overzooms
+// and, being vector, stays crisp doing it, so z12 data draws z13 perfectly well
+// and z12 is where this stops.
+const OVERVIEW_BBOX = { west: 40.73, south: 41.3, east: 42.53, north: 42.0 }
+const OVERVIEW_MAX_ZOOM = 12
+
 // 15 is the Protomaps basemap's own maximum. The renderer overzooms above it
 // and, being vector, the labels stay crisp — so z15 data covers the app's whole
 // z11–19 range. Asking for more would only fail.
 const MAX_ZOOM = 15
 
-// Vite copies public/ verbatim, so this lands at /tiles/batumi.pmtiles with no
-// config change and no plugin. It is generated, so it is gitignored.
-const OUT = join(ROOT, 'apps/web/public/tiles/batumi.pmtiles')
+// Vite copies public/ verbatim, so these land at /tiles/*.pmtiles with no config
+// change and no plugin. They are generated, so they are gitignored.
+//
+// Two archives, each verified on its own terms. Only the detail one is the map's
+// own rectangle, so only it is cross-checked against BOUNDS; and the overview's
+// floors are lower because a z12 tile carries the through-roads and little else,
+// which the detail archive's thresholds would read as a broken file.
+const ARCHIVES = [
+  {
+    key: 'detail',
+    out: join(ROOT, 'apps/web/public/tiles/batumi.pmtiles'),
+    bbox: BBOX,
+    maxZoom: MAX_ZOOM,
+    minTileEntries: 300,
+    minNamedRoads: 20,
+    boundsSource: BOUNDS_SOURCE,
+  },
+  {
+    key: 'overview',
+    out: join(ROOT, 'apps/web/public/tiles/batumi-overview.pmtiles'),
+    bbox: OVERVIEW_BBOX,
+    maxZoom: OVERVIEW_MAX_ZOOM,
+    minTileEntries: 100,
+    minNamedRoads: 5,
+    boundsSource: null,
+  },
+]
+
+// Tiny, and fetched before the archives so the client knows what it is looking for.
+const MANIFEST = join(ROOT, 'apps/web/public/tiles/manifest.json')
 
 const CACHE = join(ROOT, '.cache/basemap')
 const STAMP = join(CACHE, 'stamp.json')
@@ -367,14 +408,14 @@ const tileAt = (lat, lon, z) => {
 
 const near = (a, b) => Math.abs(a - b) < 1e-6
 
-export const verifyArchive = (cli, file, { planetBuild, bbox, maxZoom }) => {
+export const verifyArchive = (cli, file, { planetBuild, bbox, maxZoom, minTileEntries = MIN_TILE_ENTRIES, minNamedRoads = MIN_NAMED_ROADS }) => {
   const buf = readFileSync(file)
   const header = readHeader(buf)
 
   if (header.tileType !== 1) throw new Error(`tile type ${header.tileType}, expected 1 (MVT) — protomaps-leaflet cannot draw anything else`)
   if (header.maxZoom !== maxZoom || header.minZoom !== 0) throw new Error(`archive covers z${header.minZoom}–${header.maxZoom}, expected z0–${maxZoom}`)
-  if (header.tileEntries < MIN_TILE_ENTRIES) {
-    throw new Error(`only ${header.tileEntries} tile entries (expected at least ${MIN_TILE_ENTRIES}) — the extract is truncated, or the bbox is wrong`)
+  if (header.tileEntries < minTileEntries) {
+    throw new Error(`only ${header.tileEntries} tile entries (expected at least ${minTileEntries}) — the extract is truncated, or the bbox is wrong`)
   }
   for (const edge of ['west', 'south', 'east', 'north']) {
     if (!near(header.bbox[edge], bbox[edge])) {
@@ -404,7 +445,7 @@ export const verifyArchive = (cli, file, { planetBuild, bbox, maxZoom }) => {
   const { z, x, y } = tileAt(VERIFY_AT.lat, VERIFY_AT.lon, maxZoom)
   const tile = execFileSync(cli, ['tile', file, String(z), String(x), String(y)], { maxBuffer: 64 * 1024 * 1024 })
   if (tile.length === 0) throw new Error(`tile ${z}/${x}/${y}, over central Batumi, is empty`)
-  const languages = verifyTileLanguages(tile)
+  const languages = verifyTileLanguages(tile, minNamedRoads)
 
   return { header, metadata, languages, tile: { z, x, y, bytes: tile.length }, bytes: buf.length, sha256: sha256(buf) }
 }
@@ -431,16 +472,78 @@ export const checkBoundsMatch = (source, bbox) => {
 
 // --- build -----------------------------------------------------------------
 
-const stampFor = (sha) => ({ planetBuild: PLANET_BUILD, bbox: BBOX, maxZoom: MAX_ZOOM, cli: CLI_VERSION, sha256: sha })
+const stampFor = (spec, sha) => ({
+  planetBuild: PLANET_BUILD,
+  bbox: spec.bbox,
+  maxZoom: spec.maxZoom,
+  cli: CLI_VERSION,
+  sha256: sha,
+})
 
-const isCurrent = () => {
-  if (!existsSync(OUT) || !existsSync(STAMP)) return false
+const stampPath = (spec) => join(CACHE, `${spec.key}.json`)
+
+const isCurrent = (spec) => {
+  if (!existsSync(spec.out) || !existsSync(stampPath(spec))) return false
   try {
-    const stamp = JSON.parse(readFileSync(STAMP, 'utf8'))
-    return JSON.stringify(stamp) === JSON.stringify(stampFor(stamp.sha256)) && sha256(readFileSync(OUT)) === stamp.sha256
+    const stamp = JSON.parse(readFileSync(stampPath(spec), 'utf8'))
+    return (
+      JSON.stringify(stamp) === JSON.stringify(stampFor(spec, stamp.sha256)) &&
+      sha256(readFileSync(spec.out)) === stamp.sha256
+    )
   } catch {
     return false
   }
+}
+
+const cut = async (cli, spec, { force, dryRun }) => {
+  if (spec.boundsSource) {
+    const warning = checkBoundsMatch(spec.boundsSource, spec.bbox)
+    if (warning) console.warn(`basemap: ${warning}`)
+  }
+
+  if (!dryRun && !force && isCurrent(spec)) {
+    console.log(`${relative(ROOT, spec.out).replace(/\\/g, '/')} is current for planet ${PLANET_BUILD} — rebuild with --force`)
+    return
+  }
+
+  // Built aside and moved into place only once it has been verified, so the path
+  // the SPA fetches never holds a half-written or unchecked archive.
+  const partial = `${spec.out}.partial`
+  mkdirSync(dirname(spec.out), { recursive: true })
+  rmSync(partial, { force: true })
+  execFileSync(
+    cli,
+    [
+      'extract',
+      PLANET_URL,
+      partial,
+      `--bbox=${spec.bbox.west},${spec.bbox.south},${spec.bbox.east},${spec.bbox.north}`,
+      `--maxzoom=${spec.maxZoom}`,
+      ...(dryRun ? ['--dry-run'] : []),
+    ],
+    { stdio: 'inherit' },
+  )
+  if (dryRun) return
+
+  const built = verifyArchive(cli, partial, { planetBuild: PLANET_BUILD, ...spec })
+  rmSync(spec.out, { force: true })
+  renameSync(partial, spec.out)
+  mkdirSync(CACHE, { recursive: true })
+  writeFileSync(stampPath(spec), `${JSON.stringify(stampFor(spec, built.sha256), null, 2)}\n`)
+}
+
+const report = (cli, spec) => {
+  // Verified on every run, the skipped-rebuild path included: the artifacts are
+  // gitignored, so the copies on this disk are the only ones anybody has.
+  const result = verifyArchive(cli, spec.out, { planetBuild: PLANET_BUILD, ...spec })
+  console.log('')
+  console.log(`  ${relative(ROOT, spec.out).replace(/\\/g, '/')}`)
+  console.log(`  ${result.bytes.toLocaleString('en-US')} bytes  sha256 ${result.sha256}`)
+  console.log(`  ${result.header.tileEntries} tiles, z${result.header.minZoom}–${result.header.maxZoom}, ${result.metadata.name} ${result.metadata.version}`)
+  console.log(`  OSM data ${result.metadata['planetiler:osm:osmosisreplicationtime']} (planet build ${PLANET_BUILD})`)
+  for (const line of result.languages) console.log(`  ${line}`)
+  console.log(`  checked tile ${result.tile.z}/${result.tile.x}/${result.tile.y}, ${result.tile.bytes.toLocaleString('en-US')} bytes gzipped`)
+  return result
 }
 
 const main = async () => {
@@ -448,12 +551,9 @@ const main = async () => {
   const force = process.argv.includes('--force')
   const dryRun = process.argv.includes('--dry-run')
 
-  const warning = checkBoundsMatch(BOUNDS_SOURCE, BBOX)
-  if (warning) console.warn(`basemap: ${warning}`)
-
   const cli = await ensureCli()
 
-  if (dryRun || force || !isCurrent()) {
+  if (dryRun || force || ARCHIVES.some((spec) => !isCurrent(spec))) {
     // Checked here rather than left to the extract: a build date that was never
     // published, or has aged out of the bucket, otherwise surfaces as a wall of
     // range-request errors that says nothing about the cause.
@@ -465,50 +565,35 @@ const main = async () => {
       )
     }
     console.log(`planet ${PLANET_BUILD}: ${(Number(head.headers.get('content-length')) / 1e9).toFixed(1)} GB upstream`)
-
-    // Built aside and moved into place only once it has been verified, so the
-    // path the SPA fetches never holds a half-written or unchecked archive.
-    const partial = `${OUT}.partial`
-    mkdirSync(dirname(OUT), { recursive: true })
-    rmSync(partial, { force: true })
-    execFileSync(
-      cli,
-      [
-        'extract',
-        PLANET_URL,
-        partial,
-        `--bbox=${BBOX.west},${BBOX.south},${BBOX.east},${BBOX.north}`,
-        `--maxzoom=${MAX_ZOOM}`,
-        ...(dryRun ? ['--dry-run'] : []),
-      ],
-      { stdio: 'inherit' },
-    )
-
-    if (dryRun) {
-      console.log('\ndry run: nothing was written.')
-      return
-    }
-
-    const built = verifyArchive(cli, partial, { planetBuild: PLANET_BUILD, bbox: BBOX, maxZoom: MAX_ZOOM })
-    rmSync(OUT, { force: true })
-    renameSync(partial, OUT)
-    mkdirSync(CACHE, { recursive: true })
-    writeFileSync(STAMP, `${JSON.stringify(stampFor(built.sha256), null, 2)}\n`)
-  } else {
-    console.log(`${relative(ROOT, OUT)} is current for planet ${PLANET_BUILD} — rebuild with --force`)
   }
 
-  // Verified on every run, the skipped-rebuild path included: the artifact is
-  // gitignored, so the copy on this disk is the only one anybody has.
-  const result = verifyArchive(cli, OUT, { planetBuild: PLANET_BUILD, bbox: BBOX, maxZoom: MAX_ZOOM })
-  console.log('')
-  console.log(`  ${relative(ROOT, OUT).replace(/\\/g, '/')}`)
-  console.log(`  ${result.bytes.toLocaleString('en-US')} bytes  sha256 ${result.sha256}`)
-  console.log(`  ${result.header.tileEntries} tiles, z${result.header.minZoom}–${result.header.maxZoom}, ${result.metadata.name} ${result.metadata.version}`)
-  console.log(`  OSM data ${result.metadata['planetiler:osm:osmosisreplicationtime']} (planet build ${PLANET_BUILD})`)
-  console.log(`  attribution ${result.metadata.attribution}`)
-  for (const line of result.languages) console.log(`  ${line}`)
-  console.log(`  checked tile ${result.tile.z}/${result.tile.x}/${result.tile.y}, ${result.tile.bytes.toLocaleString('en-US')} bytes gzipped`)
+  for (const spec of ARCHIVES) await cut(cli, spec, { force, dryRun })
+
+  if (dryRun) {
+    console.log('\ndry run: nothing was written.')
+    return
+  }
+
+  let total = 0
+  const manifest = { planetBuild: PLANET_BUILD, archives: {} }
+  for (const spec of ARCHIVES) {
+    const result = report(cli, spec)
+    total += result.bytes
+    manifest.archives[spec.key] = {
+      url: `/tiles/${basename(spec.out)}`,
+      bytes: result.bytes,
+      sha256: result.sha256,
+      maxZoom: spec.maxZoom,
+    }
+  }
+
+  // The browser cannot tell a current archive from last year's by looking at it,
+  // and a stale one is not a visible fault — it is last year's streets drawn
+  // confidently. So the build states what it produced, and the client keys its
+  // stored copy on the sha256 rather than on the URL, which never changes.
+  writeFileSync(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`)
+  console.log(`\n  ${relative(ROOT, MANIFEST).replace(/\\/g, '/')}`)
+  console.log(`\n  ${total.toLocaleString('en-US')} bytes total for the pair`)
   console.log(`\ndone in ${((Date.now() - started) / 1000).toFixed(1)}s`)
 }
 

@@ -316,10 +316,37 @@ The dark map is now a real dark *flavor* rather than a CSS `invert(1)
 hue-rotate(180deg)` over the tile pane, so the 28 route hues sit on it as the
 colours they were chosen to be.
 
-The archive is generated, gitignored and never committed; `tools/build-basemap.mjs`
+**There are two archives, and the second one exists because of a grey rectangle.**
+The detail archive stops at the network's edge, which is right for the zooms where
+stops and buses are drawn and wrong the moment anyone zooms out: at z11 a wide
+screen asks for 1.76° of longitude against the network's 0.28°, and the surround
+came out as a grey void. Restricting zoom-out instead was tried and rejected —
+it is the whole-network view that gets lost, which on a bus map is the view that
+shows a route end to end.
+
+Widening is affordable only because of where the cost sits. Measured against the
+same planet build: widening the *detail* cut at z15 is 3,179 tiles against 589;
+a z0–13 overview of the surrounding region is about 12 MB; **a z0–12 overview is
+4.97 MB**. Nearly all of it is that one zoom level, and the renderer overzooms —
+so z12 data draws z13 perfectly well and the overview stops at 12. The pair is
+11,348,232 bytes. The overview is hidden from z14 up, by which point the detail
+archive covers any viewport on its own, so the two never both rasterise a zoom
+anyone reads the map at.
+
+**State the map's `maxZoom` explicitly.** Leaflet falls back to the widest range
+its *layers* declare whenever the map leaves one undefined
+(`getMaxZoom` → `_layersMaxZoom`). The overview layer declares `maxZoom: 13` so it
+stops drawing under the detail layer; with no ceiling of its own the map adopted
+13 as *its* ceiling and everything past z13 became unreachable. The raster layer
+used to supply this and took it with it when it went.
+
+The archives are generated, gitignored and never committed; `tools/build-basemap.mjs`
 is what is committed, it pins the planet build date, and it fails loudly rather
 than shipping a file that is the right size and the wrong language — it decodes a
-Batumi tile and asserts `name:ru` is really on the roads.
+Batumi tile from each archive and asserts `name:ru` is really on the roads, with
+a lower floor for the overview because a z12 tile carries the through-roads and
+little else. It also writes `tiles/manifest.json`, which is what lets the browser
+tell a current archive from last year's.
 
 **Being generated makes it the one deploy input that can go missing quietly**, and
 it did: a request for a tile that is not there falls through the SPA's catch-all
@@ -427,6 +454,26 @@ What is cached, and why each choice is deliberate:
   from cache costs nothing and buys the whole offline story.
 - **Map tiles** — cache-first, capped at 500 entries and 7 days. Tiles are the
   one thing that could quietly fill a phone.
+- **The basemap archives live in IndexedDB**, keyed by the sha256 the build
+  recorded rather than by their URL — the URL never changes, so a URL key would
+  serve a year-old map forever, and a stale map is not a visible fault but last
+  year's streets drawn with confidence. A first visit draws from the network
+  exactly as before, because `protomaps-leaflet` range-requests the few kilobytes
+  of directory and tile it needs rather than the whole file; the 11 MB is fetched
+  afterwards, in the background, for next time — and skipped entirely when the
+  connection reports `saveData` or 2g. Measured: a second visit fetches
+  `manifest.json` (300 bytes) and nothing else, and still draws the map.
+
+  Two honest limits. `navigator.storage.persist()` is asked for and frequently
+  refused — Chrome and Safari decide silently from how much the reader uses the
+  site, so a fresh profile gets "best effort" storage that is evictable under
+  pressure (verified: `persisted()` returns false on a first visit). And WebKit
+  deletes script-written storage after seven days with no interaction, so an
+  iPhone user who opens this monthly re-downloads. Both are survivable because a
+  miss just falls back to the network, which is why every storage failure path —
+  quota exceeded, interrupted download, storage disabled, a truncated blob — is
+  caught and ignored rather than surfaced.
+
 - **Live positions and arrivals are deliberately NOT cached.** A cached bus is
   worse than no bus, because it looks current. With the feed unreachable the
   arrival board says so in as many words (`liveUnavailable`) rather than falling

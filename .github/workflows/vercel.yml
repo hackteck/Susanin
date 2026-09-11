@@ -95,22 +95,37 @@ jobs:
       - name: Check the basemap landed in the build output
         shell: node {0}
         run: |
-          const { openSync, readSync, closeSync, statSync } = require("fs");
-          const path = ".vercel/output/static/tiles/batumi.pmtiles";
-          let size;
-          try { size = statSync(path).size } catch {
-            console.error("::error::" + path + " is missing — `npm run basemap` did not run, or Vite did not copy public/.");
+          const { openSync, readSync, closeSync, statSync, readFileSync } = require("fs");
+          const root = ".vercel/output/static/tiles/";
+          let manifest;
+          try { manifest = JSON.parse(readFileSync(root + "manifest.json", "utf8")) } catch {
+            console.error("::error::" + root + "manifest.json is missing — `npm run basemap` did not run, or Vite did not copy public/.");
             process.exit(1);
           }
-          const head = Buffer.alloc(7);
-          const fd = openSync(path, "r");
-          readSync(fd, head, 0, 7, 0);
-          closeSync(fd);
-          if (head.toString("latin1") !== "PMTiles") {
-            console.error("::error::" + path + " is not a PMTiles archive (starts with " + JSON.stringify(head.toString("latin1")) + ").");
-            process.exit(1);
+          for (const [key, entry] of Object.entries(manifest.archives)) {
+            const path = root + entry.url.split("/").pop();
+            let size;
+            try { size = statSync(path).size } catch {
+              console.error("::error::" + path + " (" + key + ") is missing.");
+              process.exit(1);
+            }
+            // The bytes, not the exit code: `vercel build` succeeded either way,
+            // and a tile request that 404s falls through the SPA rewrite to
+            // index.html, which the reader meets as "Wrong magic number".
+            if (size !== entry.bytes) {
+              console.error("::error::" + path + " is " + size + " bytes, manifest says " + entry.bytes + ".");
+              process.exit(1);
+            }
+            const head = Buffer.alloc(7);
+            const fd = openSync(path, "r");
+            readSync(fd, head, 0, 7, 0);
+            closeSync(fd);
+            if (head.toString("latin1") !== "PMTiles") {
+              console.error("::error::" + path + " is not a PMTiles archive.");
+              process.exit(1);
+            }
+            console.log(key + ": " + size.toLocaleString() + " bytes");
           }
-          console.log("basemap present: " + size.toLocaleString() + " bytes");
       - name: Deploy
         id: deploy
         run: |

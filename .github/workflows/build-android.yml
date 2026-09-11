@@ -80,16 +80,22 @@ jobs:
       # produces an app that installs fine and shows nothing.
       - name: Check the basemap was packaged
         run: |
-          TILES=apps/web/dist/tiles/batumi.pmtiles
-          if [ ! -s "$TILES" ]; then
-            echo "::error::$TILES is missing — the map would be blank in the packaged app."
+          TILES=apps/web/dist/tiles
+          if [ ! -s "$TILES/manifest.json" ]; then
+            echo "::error::$TILES/manifest.json is missing — the map would be blank in the packaged app."
             exit 1
           fi
-          if [ "$(head -c 7 "$TILES")" != "PMTiles" ]; then
-            echo "::error::$TILES is not a PMTiles archive."
-            exit 1
-          fi
-          echo "Basemap packaged: $(wc -c <"$TILES") bytes."
+          for f in batumi.pmtiles batumi-overview.pmtiles; do
+            if [ ! -s "$TILES/$f" ]; then
+              echo "::error::$TILES/$f is missing."
+              exit 1
+            fi
+            if [ "$(head -c 7 "$TILES/$f")" != "PMTiles" ]; then
+              echo "::error::$TILES/$f is not a PMTiles archive."
+              exit 1
+            fi
+            echo "  $f: $(wc -c <"$TILES/$f") bytes"
+          done
       # A packaged app is not a browser tab: it cannot be pinch-zoomed out of
       # shape, and the map supplies its own zooming.
       - name: Set correct viewport

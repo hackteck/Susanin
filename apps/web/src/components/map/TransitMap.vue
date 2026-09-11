@@ -16,6 +16,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, useCssModule, useTemplateRef, watch } from "vue";
 import L from "leaflet";
 import { leafletLayer } from "protomaps-leaflet";
+import type { ArchiveSource } from "./archives";
 import "leaflet/dist/leaflet.css";
 import { useResizeObserver } from "@surstromming/util";
 import type { Stop, Vehicle } from "@/api/types";
@@ -72,6 +73,12 @@ const props = withDefaults(
     /** Which `name:` tag the basemap labels streets from. */
     lang?: string;
     dark?: boolean;
+    /**
+     * Where the two archives are read from — a stored copy when the browser has
+     * one, otherwise their URLs. Resolved by the page so the map stays a thing
+     * that is handed its data rather than one that goes looking for it.
+     */
+    sources?: { detail: ArchiveSource; overview: ArchiveSource } | null;
     /** Milliseconds between polls — how long a bus has to glide to its new fix. */
     glideMs?: number;
     /** Room to leave at the bottom when flying to a stop, for the mobile sheet. */
@@ -86,6 +93,7 @@ const props = withDefaults(
     flyTo: null,
     lang: "ru",
     dark: false,
+    sources: null,
     glideMs: 5000,
     bottomInset: 0,
   },
@@ -135,6 +143,7 @@ const classes = computed(() => [
 
 let map: L.Map | undefined;
 let basemap: ReturnType<typeof leafletLayer> | undefined;
+let overview: ReturnType<typeof leafletLayer> | undefined;
 let shapeLayer: L.LayerGroup | undefined;
 let accuracyLayer: L.LayerGroup | undefined;
 let stopLayer: L.LayerGroup | undefined;
@@ -399,37 +408,75 @@ const drawPickedPoint = () => {
 };
 
 /**
- * The basemap: our own `.pmtiles` cut of Batumi, rendered to canvas by
- * protomaps-leaflet. Raster tiles could only ever be labelled in one language —
- * Georgian — and every localized raster service is either keyed or, in
- * Wikimedia's case, a hard 403 for anyone outside their projects. A vector cut
- * we host ourselves has no provider and no key, which is the condition the
- * recorded rejection of vector tiles was actually about.
+ * The basemap, in two layers over one style.
  *
- * `lang` picks the `name:<lang>` tag and falls back to `name`, so Georgian is
- * served by the fallback rather than a translation — `name` is what is painted
- * on the street sign, which is the right answer for `ka`.
+ * Raster tiles could only ever be labelled in one language — Georgian — and
+ * every localized raster service is either keyed or, in Wikimedia's case, a hard
+ * 403 for anyone outside their projects. A vector cut we host ourselves has no
+ * provider and no key, which is the condition the recorded rejection of vector
+ * tiles was actually about. `lang` picks the `name:<lang>` tag and falls back to
+ * `name`, so Georgian is served by the fallback rather than a translation —
+ * `name` being what is painted on the street sign.
  *
- * Rebuilt rather than mutated on a change: the alternative reaches into the
- * layer's `paintRules`/`labelRules` and needs a Flavor object out of a package
- * we only have transitively. Locale and theme change on a deliberate press, so
+ * The detail archive stops at the network's edge, because cutting z15 over
+ * anything wider is thousands of tiles. That left a grey void around the city
+ * for anyone who zoomed out: at z11 a wide screen asks for 1.76° of longitude
+ * against the network's 0.28°. So a second, coarse archive sits underneath and
+ * fills the surround. It stops at z12 and is overzoomed for z13, which is what
+ * makes it affordable — measured, that one level is the difference between
+ * 4.97 MB and about 12.
+ *
+ * They never both draw the same pixel at a zoom where it matters: the overview
+ * is hidden from z14 up, by which point the detail archive covers the viewport
+ * on its own.
+ *
+ * Rebuilt rather than mutated on a locale or theme change: the alternative
+ * reaches into the layer's paint and label rules and needs a Flavor object out
+ * of a package we only have transitively. Both change on a deliberate press, so
  * a rebuild costs nothing anyone can feel — and swapping a Leaflet layer is a
  * Leaflet operation, not a Vue patch on Leaflet's DOM.
  */
+const BASEMAP_ATTRIBUTION =
+  '<a href="https://protomaps.com">Protomaps</a> &copy; ' +
+  '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+/** The zoom at which the detail archive alone covers any viewport we support. */
+const DETAIL_FROM_ZOOM = 13;
+
 const drawBasemap = () => {
   if (!map) return;
 
+  overview?.remove();
   basemap?.remove();
+
+  const flavor = props.dark ? "dark" : "light";
+  const base = import.meta.env.BASE_URL;
+
+  overview = leafletLayer({
+    url: props.sources?.overview ?? `${base}tiles/batumi-overview.pmtiles`,
+    flavor,
+    lang: props.lang,
+    maxDataZoom: 12,
+    // Hidden once the detail archive can carry the whole viewport, so the two
+    // are never both rasterising at the zooms people actually read the map at.
+    maxZoom: DETAIL_FROM_ZOOM,
+    attribution: BASEMAP_ATTRIBUTION,
+  });
+  overview.addTo(map);
+
   basemap = leafletLayer({
-    url: `${import.meta.env.BASE_URL}tiles/batumi.pmtiles`,
-    flavor: props.dark ? "dark" : "light",
+    url: props.sources?.detail ?? `${base}tiles/batumi.pmtiles`,
+    flavor,
     lang: props.lang,
     // The archive stops at z15 and the renderer overzooms above it; because it
     // is vector, the labels stay sharp rather than turning to porridge.
     maxDataZoom: 15,
-    attribution:
-      '<a href="https://protomaps.com">Protomaps</a> &copy; ' +
-      '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    minZoom: DETAIL_FROM_ZOOM,
+    // The same string as the overview, deliberately: Leaflet's attribution
+    // control counts identical entries and prints them once, whereas leaving
+    // this off let the layer fall back to its own wording and the bar read
+    // "Protomaps © OpenStreetMap contributors, Protomaps © OpenStreetMap".
+    attribution: BASEMAP_ATTRIBUTION,
   });
   basemap.addTo(map);
 };
@@ -454,6 +501,14 @@ onMounted(() => {
     center: CENTRE,
     zoom: 14,
     minZoom: 11,
+    // Both ends are stated, and stating maxZoom is not optional: Leaflet falls
+    // back to the widest range its *layers* declare whenever the map itself
+    // leaves one undefined (`getMaxZoom` → `_layersMaxZoom`). The overview layer
+    // declares maxZoom 13 so it stops drawing under the detail layer — and with
+    // no map ceiling of its own that silently became the whole map's ceiling,
+    // making every zoom past 13 unreachable. The raster layer used to supply
+    // this and took it with it when it went.
+    maxZoom: 19,
     maxBounds: BOUNDS,
     maxBoundsViscosity: 0.7,
     zoomControl: false,
