@@ -11,6 +11,7 @@
       :picked-point="pickedPoint"
       :fly-to="flyTo"
       :sources="basemapSources"
+      :route-stops="routeStops"
       :lang="locale.locale"
       :dark="theme === 'dark'"
       :glide-ms="transit.POLL_MS"
@@ -344,6 +345,18 @@ const focusVehicleRoute = (vehicleId: string) => {
   const vehicle = transit.vehicles.find((candidate) => candidate.id === vehicleId);
   if (vehicle) transit.selectOnly(vehicle.routeId);
 };
+
+// Only when exactly one route is drawn. With two the colours would compete and
+// with none it is every stop in the city, which the zoom rule already handles —
+// this answers "where does this line stop", which is only a question when there
+// is one line.
+const routeStops = computed(() => {
+  if (transit.selectedRouteIds.length !== 1) return null;
+  const id = transit.selectedRouteIds[0]!;
+  const route = transit.routeById.get(id);
+  if (!route) return null;
+  return { ids: transit.stops.filter((stop) => stop.routeIds.includes(id)).map((stop) => stop.id), hue: route.hue };
+});
 
 // Only selected routes are drawn; with nothing selected the map is the live
 // fleet over a plain city, which is the view most people open it for.

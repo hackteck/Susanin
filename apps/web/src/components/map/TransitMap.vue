@@ -79,6 +79,8 @@ const props = withDefaults(
      * that is handed its data rather than one that goes looking for it.
      */
     sources?: { detail: ArchiveSource; overview: ArchiveSource } | null;
+    /** The stops of the one route being shown, drawn in its colour at every zoom. */
+    routeStops?: { ids: string[]; hue: number } | null;
     /** Milliseconds between polls — how long a bus has to glide to its new fix. */
     glideMs?: number;
     /** Room to leave at the bottom when flying to a stop, for the mobile sheet. */
@@ -94,6 +96,7 @@ const props = withDefaults(
     lang: "ru",
     dark: false,
     sources: null,
+    routeStops: null,
     glideMs: 5000,
     bottomInset: 0,
   },
@@ -239,14 +242,30 @@ const drawStops = () => {
   const view = paddedBounds();
   const crowded = map.getZoom() < STOPS_FROM_ZOOM;
 
-  const draw = (stop: Stop, selected: boolean) =>
-    L.circleMarker([stop.lat, stop.lon], {
-      radius: selected ? 8 : 4,
-      weight: selected ? 3 : 2,
-      className: selected ? $style.stopSelected : $style.stop,
+  // With a single route drawn, the question stops being "where are the stops"
+  // and becomes "where does *this* one stop" — so its stops are drawn at every
+  // zoom, in its own colour. Following a line you cannot see the stops of is
+  // reading a route without its answer.
+  const onRoute = props.routeStops ? new Set(props.routeStops.ids) : null;
+
+  const draw = (stop: Stop, kind: "plain" | "onRoute" | "selected") => {
+    const marker = L.circleMarker([stop.lat, stop.lon], {
+      radius: kind === "selected" ? 8 : kind === "onRoute" ? 5.5 : 4,
+      weight: kind === "plain" ? 2 : 3,
+      className:
+        kind === "selected" ? $style.stopSelected : kind === "onRoute" ? $style.stopOnRoute : $style.stop,
     })
       .on("click", () => emit("selectStop", stop.id))
       .addTo(stopLayer!);
+
+    // Same trick as the route line: Leaflet writes colours as presentation
+    // attributes, where `var()` is not dependably resolved, so the rule lives in
+    // the stylesheet and only the hue is set per element.
+    if (kind === "onRoute" && props.routeStops) {
+      (marker.getElement() as SVGElement | undefined)?.style.setProperty("--hue", String(props.routeStops.hue));
+    }
+    return marker;
+  };
 
   let chosen: Stop | undefined;
 
@@ -255,15 +274,18 @@ const drawStops = () => {
       chosen = stop;
       continue;
     }
-    if (crowded) continue;
+    const highlighted = onRoute?.has(stop.id) ?? false;
+    // A highlighted stop ignores the crowding rule: there are at most a few
+    // dozen on one route, which is a shape rather than a smear.
+    if (crowded && !highlighted) continue;
     if (!view?.contains([stop.lat, stop.lon])) continue;
-    draw(stop, false);
+    draw(stop, highlighted ? "onRoute" : "plain");
   }
 
   // Last, so it sits above the ordinary stop that may be a few metres away —
   // and at every zoom, because a highlight that disappears when you zoom out,
   // while its arrival panel stays open, reads as the map losing track of it.
-  if (chosen && view?.contains([chosen.lat, chosen.lon])) draw(chosen, true);
+  if (chosen && view?.contains([chosen.lat, chosen.lon])) draw(chosen, "selected");
 };
 
 const drawVehicles = () => {
@@ -580,6 +602,7 @@ onBeforeUnmount(() => {
 
 watch(() => props.shapes, drawShapes, { deep: true });
 watch(() => props.stops, drawStops);
+watch(() => props.routeStops, drawStops);
 watch(() => props.vehicles, drawVehicles);
 watch(() => props.userPosition, drawUser);
 watch(() => props.userStale, drawUser);
@@ -742,6 +765,16 @@ watch(
 // The inverse of an ordinary stop rather than a new colour: the 28 route hues
 // already own colour on this map, so "the one you picked" has to be said with
 // contrast instead — otherwise it reads as a twenty-ninth route.
+// A stop on the one route being shown: its line's own colour, so the dot and the
+// polyline are visibly the same thing. Bigger than an ordinary stop and smaller
+// than the chosen one, which is the order of the questions they answer.
+.stopOnRoute {
+  stroke: oklch(var(--route-l) var(--route-c) var(--hue));
+  fill: var(--stop-fill);
+  fill-opacity: 1;
+  cursor: pointer;
+}
+
 .stopSelected {
   stroke: var(--stop-selected-ring);
   fill: var(--stop-selected-fill);
