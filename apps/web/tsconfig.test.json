@@ -1,0 +1,18 @@
+{
+  // The journey planner is plain TypeScript with no Vue and no DOM, which is
+  // what lets `node --test` run it directly. Its tests are checked here, with
+  // Node's types, and the modules they import are checked again under the app's
+  // own config — so a planner file that reached for `window` fails one or the other.
+  "extends": "@vue/tsconfig/tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "lib": ["ES2023"],
+    "types": ["node"],
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src/**/*.test.ts"]
+}

@@ -169,6 +169,41 @@ walking the real polylines (reporting `Status: -1`, so the inference is
 exercised rather than bypassed); point `UPSTREAM_BASE` at it. **Never leave a
 deployment pointed there.**
 
+**The timetable is trips, and ten of its directions are physically impossible.**
+Upstream publishes each stop's times as a bare list, but measured across the
+network every stop of a direction carries the same count, the k-th time always
+increases along the chain, and every trip keeps one running-time pattern — so
+the k-th entries *are* the k-th trip, and a direction is one set of offsets plus
+its first stop's departures (`domain/schedule.ts`, `inferTrips`). Measured
+against the matched shapes, though, the intermediate times are not all real:
+route 8 inbound runs 38 stops and 13.8 km in **three minutes**, route 12
+outbound 34 stops in eight, and route 6, 10A and others have four-minute
+stretches at 108–186 km/h. Those are repaired when the network is built and the
+repair is written back into the stop schedules, so the stop page, the arrival
+board and the journey planner give one time for one bus:
+
+- a pattern averaging over **45 km/h** end to end (the same ceiling arrivals.ts
+  clamps a measured speed to) has no usable intermediate times, and they are
+  re-derived from distance at the network's own median scheduled speed
+  (**19.6 km/h**, measured each build off the plausible patterns);
+- otherwise a hop is only ever pushed *later*, and only as far as it takes to
+  get under **60 km/h** between any two stops — generous, because the suburban
+  lines do run on highway — with two minutes of slack for the whole-minute
+  rounding at both ends. Less slack and seven directions picked up a one-minute
+  "correction" that was only rounding.
+
+The first stop is never touched; its departures are the ones the rest of the
+data agrees with. Three directions are re-derived and seven capped, and each
+repaired time is flagged (`StopSchedule.estimated`, `Arrival.scheduledEstimated`)
+and shown with a `≈`. Directions upstream got right keep their published strings
+byte for byte, and `network.test.ts` asserts both halves — each guard was broken
+on purpose to watch it go red.
+
+Seven route-directions publish **no times at all** — 22, 26, 33, 35 and 37 both
+ways, and 7 and 7A inbound — though their buses run (route 33 had one live at
+midday). They still get distance-derived ride times, so the planner can offer
+them, but apart from the timed options and labelled as having no timetable.
+
 **What is missing, and what the app must therefore not promise:**
 
 - **No arrival predictions.** The feed has live GPS and a static timetable and
@@ -347,7 +382,7 @@ publish only after review. Don't patch around it in this app.
 **Leaflet with a self-hosted Protomaps vector basemap.** No API key and no vendor
 account, which was always the constraint — the earlier note here rejected vector
 tiles because they "need a keyed provider", and that was right about *providers*.
-The tiles are now our own file: `npm run basemap` cuts a 5.85 MiB `.pmtiles`
+The tiles are now our own file: `npm run basemap` cuts a 6.5 MiB `.pmtiles`
 archive of the network's bounding box out of a pinned Protomaps planet build and
 `protomaps-leaflet` renders it to canvas inside the same Leaflet map. Leaflet
 stays, and so do all three of the lessons below.
@@ -383,13 +418,23 @@ it is the whole-network view that gets lost, which on a bus map is the view that
 shows a route end to end.
 
 Widening is affordable only because of where the cost sits. Measured against the
-same planet build: widening the *detail* cut at z15 is 3,179 tiles against 589;
-a z0–13 overview of the surrounding region is about 12 MB; **a z0–12 overview is
-4.97 MB**. Nearly all of it is that one zoom level, and the renderer overzooms —
-so z12 data draws z13 perfectly well and the overview stops at 12. The pair is
-11,348,232 bytes. The overview is hidden from z14 up, by which point the detail
-archive covers any viewport on its own, so the two never both rasterise a zoom
-anyone reads the map at.
+same planet build: widening the *detail* cut at z15 to the overview's extent is
+3,179 tiles against the network box's 796; a z0–13 overview of the surrounding
+region is about 12 MB; **a z0–12 overview is 4.97 MB**. Nearly all of it is that
+one zoom level, and the renderer overzooms — so z12 data draws z13 perfectly well
+and the overview stops at 12. The pair is 11,984,003 bytes. The overview is
+hidden from z14 up, by which point the detail archive covers any viewport on its
+own, so the two never both rasterise a zoom anyone reads the map at.
+
+**The network box has to contain the network.** It stopped at 41.55°N, and seven
+stops lie south of that — route 16's terminus at Sarpi, route 33's on Ioane Lazi
+Street, four on Andrew the Apostle Highway — so the ends of two lines could not
+be centred at street zoom and had no detail tiles under them. It now runs
+41.50–41.77°N, 2–3 km clear of the southernmost and northernmost stops, for
+0.7 MB. The margin also bought the room a trip needs: `maxBounds` clamps every
+move, a phone's sheet covers the bottom 60%, and at z12 a tall screen was as
+tall as the old box, so a trip fitted above the sheet was pushed straight back
+under it.
 
 **State the map's `maxZoom` explicitly.** Leaflet falls back to the widest range
 its *layers* declare whenever the map leaves one undefined
@@ -418,8 +463,21 @@ then read the first seven bytes of the built artifact and fail if they are not
 way to meet this error is to run `npm run dev` on a checkout that has never built
 the tiles. The cost of generating rather than committing is that a deploy now
 depends on `build.protomaps.com` being reachable; that is a loud failure, and
-preferable to a 5.85 MiB binary in every diff. The map is
+preferable to a 6.5 MiB binary in every diff. The map is
 not a surstromming component and never will be — it's an app concern.
+
+**A pinned planet build does not stay fetchable.** Protomaps' bucket keeps about
+a week of daily builds — checked on 2026-09-18, the 12th and 15th–17th answered
+and the 10th and 11th were 404 — so the `20260910` pin had already made every
+clean build fail, and the next deploy would have failed with nothing in the repo
+changed. Two things now stand between a pin's age and a broken release: both
+workflows cache `.cache/basemap` and `public/tiles` keyed on the build script's
+own hash, so an unchanged pin reuses the same bytes without asking Protomaps
+anything; and when the pin has gone *and* nothing is cached, the script builds
+from the newest build that still exists, annotates the run with both dates, and
+records them in the stamps and the manifest. Freshness is judged against the
+pin, so a dead pin costs one fallback build rather than a different map on every
+deploy. Re-pin when the annotation appears.
 
 Leaflet is imperative and owns its DOM subtree, so it is wrapped in exactly one
 component (`components/map/TransitMap.vue`) that takes data as props and emits
@@ -453,7 +511,12 @@ question it exists to answer. The map itself never decides to fly: that was app
 logic living in the component, and it is why the dot could only ever be centred
 once — the old code refused a second fix by design, so panning away lost it for
 good. The page now asks, through a `flyTo` prop carrying a nonce, which is what
-lets it ask for the same place twice. On the map page only, the fix is a
+lets it ask for the same place twice — and asks only for a fix near the network:
+the map is held inside the box, so flying to a fix in Tbilisi, or to the 0°, 0°
+a browser with no real position reports, stopped at the box's edge over open sea
+and left the reader looking at water. The first fix is not flown to from there,
+and the locate button says the reader is far from Batumi instead. On the map
+page only, the fix is a
 `watchPosition` that pauses with the tab and stops with the page: a dot beside a
 live bus is a claim the app has to keep true, and a stale one is wrong in the
 same way a cached bus would be.
@@ -494,6 +557,12 @@ several routes are selected removes its line and takes that bus off the map with
 it: `visibleVehicles` filters by the selection. One learnable rule is worth more
 than sparing that one case.
 
+A trip on the map narrows the live feed to the lines it rides, through a
+separate `focusRouteIds` that takes precedence over the selection without
+changing it, and the selection's own shapes step aside for the trip's. So while
+a trip is shown, pressing a bus does nothing: it would toggle a selection the
+reader cannot see, and they would find it changed when the trip is closed.
+
 ## Route colours
 
 The feed has no route colours and 28 routes is far past the 5-step categorical
@@ -513,10 +582,14 @@ The frontend never sees an upstream shape. `GET /api/*`:
     GET /api/stops                       all stops (optionally ?bbox=s,w,n,e)
     GET /api/stops/:id                   stop + per-route scheduled departures
     GET /api/stops/:id/arrivals          next scheduled times + live estimates
+    GET /api/timetable                   every direction as trips, for the planner
     GET /api/vehicles?routes=a,b         live vehicles, heading derived
 
 Cache TTLs: the dataset 10 minutes (upstream says 600), vehicles 4 seconds
-(upstream says 4). Both are single-flighted.
+(upstream says 4). Both are single-flighted. `/api/timetable` is 80 KB of JSON,
+9.5 KB gzipped: a pattern is its stop ids, one set of offsets and its first
+stop's departures, and a route detail's directions carry each stop's `along` so
+a client can cut the line between two of them.
 
 ## Installable, and offline
 
@@ -527,9 +600,11 @@ not need the network.
 
 What is cached, and why each choice is deliberate:
 
-- **The network** (`/api/routes`, `/api/stops`, `/api/stops/:id`) —
-  stale-while-revalidate, 14 days. It changes about once a year, so serving it
-  from cache costs nothing and buys the whole offline story.
+- **The network** (`/api/routes`, `/api/stops`, `/api/stops/:id`,
+  `/api/timetable`) — stale-while-revalidate, 14 days. It changes about once a
+  year, so serving it from cache costs nothing and buys the whole offline story,
+  trip planning included: verified with the network off, a plan comes back from
+  the cached timetable while the header says there is no live data.
 - **Map tiles** — cache-first, capped at 500 entries and 7 days. Tiles are the
   one thing that could quietly fill a phone.
 - **The basemap archives live in IndexedDB**, keyed by the sha256 the build
@@ -660,15 +735,23 @@ The keystore in that workflow is a throwaway for an unpublishable build. A real
 release needs a keystore held as a secret; that is deliberately not wired up,
 because a signing key that lives in a workflow file is not a signing key.
 
-## Finding a stop
+## Finding a stop, and getting there
 
-Two ways, both entirely client-side over the 578 stops already in the store:
+All of it client-side over the 578 stops already in the store.
 
-- **Search** (sidebar, every page) matches the pole number *or* a name fragment
-  in **all three locales at once** — someone reading the Russian UI may still be
-  typing what is printed on the pole in Georgian. A numeric query matches the
-  code alone and ranks exact hits first, because the code is the only handle
-  that is unambiguous: 74 names are shared by more than one stop.
+- **Search lives in the trip planner's two fields** — `Откуда` and `Куда` in the
+  sidebar, on every page. It replaced the stop search it grew out of and keeps its
+  rules: a query matches the pole number *or* a name fragment in **all three
+  locales at once** — someone reading the Russian UI may still be typing what is
+  printed on the pole in Georgian — and a numeric query ranks exact codes first,
+  because the code is the only unambiguous handle: 74 names are shared by more
+  than one stop. An empty field offers "my location" and "choose on the map",
+  as Google's does.
+- **One end chosen, and it is a stop: its arrivals open.** That is what keeps
+  looking a stop up by its number a single gesture, and the cursor moves on to
+  the other field, because the trip is only half asked. Choosing only a
+  destination, with location already permitted, fills the start with "my
+  location" — never with a prompt nobody asked for.
 - **From a stop to its routes.** The stop page opens with a chip per route
   through it, and pressing one lands on the map with **only that route** drawn.
   It sets the selection and navigates — the selection *is* the map's state, so
@@ -683,38 +766,122 @@ Two ways, both entirely client-side over the 578 stops already in the store:
   affordance exist. The stop page keeps its own chips and passes no
   `selectable`, because there the same gesture would toggle a map nobody can
   see, and its chips already mean "take me there".
+- **Every stop is a place a trip can start or end** — `Отсюда` / `Сюда` on its
+  map sheet and on its page, as on any place card.
 - **The chosen stop is drawn differently** — bigger, and filled with the inverse
   of an ordinary stop rather than a new colour, because the 28 route hues
   already own colour on this map and a twenty-ninth would just join them. It is
   drawn last so it sits above the ordinary stop that may be metres away, and at
   **every** zoom: a highlight that vanishes on zooming out while its arrival
-  panel stays open reads as the map losing track of it.
-- **Point at the map instead.** The pole number and the name are both things you
-  have to know; a place on a map is not. The search field carries a pin toggle
-  that arms the map, and the next tap answers with the stops nearest that point.
-  While armed the overlay and marker panes are made inert — one rule, rather
-  than branching twelve marker handlers — and `doubleClickZoom` is disabled,
-  because Leaflet fires `click` on the first tap of a double-tap and a pick that
-  lands because someone was zooming is a pick nobody made. The control pane is
-  untouched, so zooming still works: picking a point you cannot see is not
-  picking.
-
+  panel stays open reads as the map losing track of it. A trip's two ends use
+  the same inverted pair — a hollow ring to start, a filled dot to finish — in
+  the fields, the step list and on the map alike.
+- **Point at the map instead.** A place on a map needs no name. "Choose on the
+  map" arms it for one field; the sheet steps aside so the whole map is
+  tappable, and the next tap is that end of the trip. While armed the overlay
+  and marker panes are made inert — one rule, rather than branching twelve
+  marker handlers — and it has to reach *inside* the panes: Leaflet gives every
+  interactive marker and path `pointer-events: auto` of its own, so a rule on
+  the panes alone left each bus and stop answering taps (measured: a pick on the
+  city centre landed on the bus pill there and chose nothing). `doubleClickZoom`
+  is disabled while armed, because Leaflet fires `click` on the first tap of a
+  double-tap and a pick that lands because someone was zooming is a pick nobody
+  made. The control pane is untouched, so zooming still works.
 - **Where a stop was chosen from is app state, not history.** `stores/proximity`
-  holds an `origin` — `me`, a picked point, or nothing — set only by a proximity
-  list and cleared by every other route into a stop. It is what the back arrow
-  in the map sheet and the back row on the stop page are derived from, so a
-  reloaded or shared link behaves like a tap rather than guessing from
-  `history.length`. It is deliberately **not** persisted: "where you were a
-  moment ago" is not a preference, and a back arrow pointing at last Tuesday's
-  picked point is worse than no arrow. The same store is why a fix taken on the
-  map is still there on `/nearby` — two page-local copies of it was the single
-  fact behind three separate complaints.
-
-- **Nearby** (`/nearby`) sorts stops by straight-line distance, capped at 1.2 km. It says **"straight-line"** in the UI and
-  means it — Batumi has a river, a rail line and a port, and there is no
-  pedestrian graph here to route around them. Distance leads the row, because at
-  a kerb "how far" is the question and the name only matters once you have
+  holds an `origin` — `me` when a stop was picked out of the stops near the
+  reader, or nothing — set only by that list and cleared by every other route
+  into a stop, the map sheet's timetable link included. The stop page's back row
+  is derived from it, or from a trip in progress ("К маршруту"), so a reloaded or
+  shared link behaves like a tap rather than guessing from `history.length`. It
+  is deliberately **not** persisted, and the map's locate button no longer sets
+  it: a stop opened from the map after pressing it offered a way back to a list
+  the reader had never seen.
+- **Nearby** (`/nearby`) sorts stops by straight-line distance, capped at the
+  planner's own 1.2 km. It says **"straight-line"** in the UI and means it for the
+  distance; the walk time beside it is the planner's model (below), so the two
+  screens cannot give the same walk two times. Distance leads the row, because
+  at a kerb "how far" is the question and the name only matters once you have
   chosen.
+
+## Planning a trip
+
+**It runs in the browser, and that is two decisions, not one.** The fix never
+leaves the device — the API client takes no coordinates, and a planner on the
+server would have to — and a plan works with no signal once the timetable has
+been fetched, which is the offline story this app exists for. The cost is 9.5 KB
+of gzipped timetable on first use, fetched when a field is first focused rather
+than on every visit. The code is `apps/web/src/planner/` — plain TypeScript with
+no Vue and no DOM, so `node --test` runs it directly.
+
+- **RAPTOR** (Delling, Pajor, Werneck 2012) over trips rebuilt from
+  `/api/timetable`: round k is the earliest arrival with at most k buses, which
+  makes the rounds the transfer counts. Up to three buses. One timetable serves
+  every day, so each pattern carries yesterday's, today's and tomorrow's
+  departures: a search at 23:40 finds the 06:30, and one at 00:05 can still catch
+  a bus that left before midnight. 2–9 ms a plan on the real network.
+- **Which stop a bus is boarded at is chosen, not inherited.** Plain RAPTOR
+  boards a trip where the scan first meets it — measured, that sent a reader on
+  a 14-minute walk to board line 10 one stop before a pole seven minutes away
+  that the same bus reached a minute later. The first bus is boarded where the
+  reader can leave home latest; a change, where the wait at the kerb is shortest.
+- **Walking is measured, not assumed.** 30 stop pairs from 150 m to 1.5 km,
+  routed on foot over OpenStreetMap (FOSSGIS's OSRM), came out a median
+  **1.25×** the straight line (quartiles 1.17 and 1.37) at the router's own
+  **75 m a minute** (`planner/walking.ts`). Walks are drawn as dotted straight
+  lines: "about this way, on foot", not a path we do not have.
+- **Slack:** a minute to be at the pole before the bus, three for a change of
+  bus — the bus being left is the late one, and a connection that only works if
+  it isn't is not one to send anybody to. Transfers walk up to 400 m straight.
+- **Reach:** stops within the same 1.2 km as Nearby, and the nearest three from
+  up to 3 km only when there is none that close. Offered beside a stop that *was*
+  close, a stop 2.6 km off turned a trip to Sarpi into a bus and a 44-minute walk.
+- **Options, like Google's:** everything two searches, the second starting just
+  after the first option leaves, and two more after that, can find — one per
+  stop it could get off at — then nothing another option beats on leaving,
+  arriving, changes and walking; one per sequence of lines; ranked by arrival
+  plus five minutes a change and walking counted at 1.5×; nothing over 1.5× the
+  best's cost, except that the best bus option always survives, so 23:30 offers
+  the 07:00 as well as the 40-minute walk that beats it. Walking alone is an
+  option when it is under an hour. Arrive-by bisects the departure time, since
+  the earliest arrival never gets earlier as the departure gets later.
+- **Lines with no timetable** are offered apart: a direct ride on one, with its
+  ride time and "+ the wait", when it could beat the best timed option.
+- **Live, where it helps:** the step list shows the first bus's line as the feed
+  sees it ("Ближайший сейчас: 13 мин" beside a scheduled 12:31 is the timetable
+  and the road disagreeing today), and the map shows only the trip's buses.
+- **Stable under a thumb:** a "leave now" plan is redone every 30 s while shown,
+  the chosen option is tracked by its lines rather than its place in the list,
+  and "me" moves only when the fix moves 50 m — the map watches the position
+  every few seconds, and reshuffling the options for GPS jitter is worse than
+  an access walk 40 m out of date. The map fits the trip when it changes,
+  measured off the laid-out sheet, and not on the 30-second re-plan.
+
+## Sharing
+
+`/share` carries the link, a QR code for it, and the system share sheet.
+
+- **`SITE_URL` is the one address** (`.env.example`, default the production
+  domain). `apps/web/vite.site.ts` reads it at build time into `virtual:site`
+  for the page and into `index.html`'s `og:url`/`og:image`, which used to be the
+  one place the domain was typed by hand; the deploy's post-deploy check reads
+  it back out of the build. `new URL` rejects anything that is not absolute, so
+  a typo fails the build instead of being printed on a poster.
+- **The QR code is made at build time**, by `uqr` (zero dependencies, build-time
+  only): one SVG path of horizontal runs, four modules of quiet zone, ECC M —
+  version 3, 29 modules, where H would need a denser code for an overlay nobody
+  draws. Black on white in both themes and written into the file, because it is
+  also what gets downloaded and printed, and some cameras refuse light-on-dark.
+  Verified by decoding it: the on-screen code and the downloaded PNG both read
+  back to the address with `jsQR`.
+- **The download is a PNG** drawn from the same SVG at a whole number of pixels
+  per module — a fractional scale smears module edges, and that is what makes a
+  printed code fail — because galleries, messengers and print shops take PNG.
+- **Share is `navigator.share`** where it exists, since the system knows which
+  messengers are on the phone; closing the sheet is an answer, not an error.
+  Where it is absent — desktop Firefox, and Android's WebView, which is the
+  packaged app — copying the link is the primary action, and a refused clipboard
+  selects the address instead. The packaged app shares `SITE_URL`, not its own
+  `https://localhost`.
 
 ## Deploy
 
@@ -732,21 +899,20 @@ prebuilt flow (`link --project <package.json name>` → `pull` → `build --prod
 - **Typecheck and tests gate the deploy**, in a `verify` job that also runs on
   pull requests (where it needs no token). A red suite should stop a release,
   not follow it.
-- **There is no post-deploy smoke test, and that is a decision.** Vercel's
+- **The post-deploy check asks the production domain for `/api/health`.**
   Deployment Protection covers the *generated* deployment URL and leaves only the
-  production domain public — so the URL a fresh deployment has is precisely the
+  production domain public, so the URL a fresh deployment has is precisely the
   one an unauthenticated request cannot reach; measured, it answers 302 to
-  `vercel.com/sso-api`. Two ways round it were tried and both cost more than the
-  check was worth: resolving the production alias back out of `vercel inspect
-  --json` or the deploy log, and `vercel curl`, which does carry the bypass but
-  forwards everything after the path to real curl (`curl: option --token=*** is
-  unknown`). The cheap version, if it is ever wanted back, is the one genuinely
-  public thing: `curl -fsS https://susanin-batumi.vercel.app/api/health`, which
-  needs no CLI, no parsing and no secret — only the production domain written
-  down, which is what was being avoided. What is lost meanwhile is real: the
-  frontend is static and deploys happily while the function is broken, so a dead
-  API now ships quietly. That is exactly how `/api` shipped returning nothing at
-  all, twice.
+  `vercel.com/sso-api`. Resolving the alias out of `vercel inspect --json` and
+  `vercel curl` were both tried and cost more than the check was worth. What was
+  missing was the production domain written down, and `SITE_URL` is that — the
+  check reads it back out of the built `index.html` rather than restating it. It
+  accepts both answers the function gives, 200 and a 503 when Batumi's feed is
+  down, and fails on anything that is not the function answering: Vercel's own
+  `NOT_FOUND`, a timeout, or the SPA's HTML, which is how `/api` shipped
+  returning nothing at all, twice, while every step was green. It runs before
+  `remove --safe`, so a broken release leaves the previous deployment in place
+  to roll back to.
 
 Four settings that are easy to get wrong:
 
@@ -797,10 +963,14 @@ default, and the frontend is same-origin with the API so no CORS entry is needed
 
 ## Workflow
 
-- **The API is tested; the UI is not.** `npm test` runs Node's built-in runner
-  (`node --test`) — no framework, no config, no dependency, and it strips the
-  TypeScript itself. Tests are `*.test.ts` beside the code they cover, so
-  `tsconfig` already typechecks them and discovery needs no glob.
+- **The API and the journey planner are tested; the UI is not.** `npm test` runs
+  Node's built-in runner (`node --test`) in both workspaces — no framework, no
+  config, no dependency, and it strips the TypeScript itself. Tests are
+  `*.test.ts` beside the code they cover. The planner is web code but it is the
+  same kind of code as the API's: whether a change of bus leaves time to make it
+  is invisible in a screenshot. So `apps/web/src/planner/` stays free of Vue and
+  the DOM, its relative imports carry `.ts` for Node, and `tsconfig.test.json`
+  checks the tests with Node's types while the app's config excludes them.
   The UI stays manually verified in the browser over Chrome DevTools Protocol on
   port 9222, per surstromming's rule.
 

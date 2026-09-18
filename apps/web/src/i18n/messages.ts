@@ -86,7 +86,6 @@ export const messages = {
   // promise and no room to promise it in.
   feedUnavailable: { ru: 'Нет живых данных', ka: 'ცოცხალი მონაცემები არ არის', en: 'No live data' },
 
-  searchStops: { ru: 'Поиск остановки', ka: 'გაჩერების ძებნა', en: 'Search stops' },
   noResults: { ru: 'Ничего не найдено', ka: 'ვერაფერი მოიძებნა', en: 'Nothing found' },
   nearMe: { ru: 'Рядом', ka: 'ჩემთან ახლოს', en: 'Nearby' },
   nearbyStops: { ru: 'Остановки рядом', ka: 'ახლომდებარე გაჩერებები', en: 'Stops near you' },
@@ -109,11 +108,12 @@ export const messages = {
     en: 'No stops within walking distance',
   },
   // Said plainly, because Batumi has a river, a rail line and a port: the
-  // straight line to a stop is not always a route to it.
+  // straight line to a stop is not always a route to it. The walk time already
+  // allows for the typical detour (planner/walking.ts); the distance does not.
   straightLineNote: {
-    ru: 'Расстояние по прямой — реальный путь может быть длиннее.',
-    ka: 'მანძილი პირდაპირი ხაზით — რეალური გზა შეიძლება უფრო გრძელი იყოს.',
-    en: 'Straight-line distance — the walk itself may be longer.',
+    ru: 'Расстояние — по прямой; время пешком — с поправкой на улицы, но путь бывает и длиннее.',
+    ka: 'მანძილი პირდაპირი ხაზითაა; სავალი დრო ქუჩებს ითვალისწინებს, თუმცა გზა შეიძლება უფრო გრძელი იყოს.',
+    en: 'Distances are straight-line; walk times allow for streets, but a walk can still run longer.',
   },
 
   stopNumber: { ru: 'Остановка №', ka: 'გაჩერება №', en: 'Stop no.' },
@@ -159,37 +159,110 @@ export const messages = {
     en: 'Your position is only approximate — this list may be off',
   },
 
-  // The nearest stop, offered without being asked for.
-  nearestStop: { ru: 'Ближайшая остановка', ka: 'უახლოესი გაჩერება', en: 'Nearest stop' },
-  openNearestStop: {
-    ru: 'Открыть ближайшую остановку',
-    ka: 'უახლოესი გაჩერების გახსნა',
-    en: 'Open the nearest stop',
-  },
-  // «Скрыть» puts a suggestion away; «Закрыть» shuts a panel. Two different
-  // acts, and a Russian reader hears the difference.
-  dismiss: { ru: 'Скрыть', ka: 'დამალვა', en: 'Dismiss' },
   refreshLocation: { ru: 'Обновить местоположение', ka: 'მდებარეობის განახლება', en: 'Refresh location' },
+  farFromBatumi: {
+    ru: 'Вы сейчас далеко от Батуми — карта покажет город, а не вас',
+    ka: 'ახლა ბათუმიდან შორს ხართ — რუკა ქალაქს აჩვენებს და არა თქვენ',
+    en: 'You are a long way from Batumi — the map shows the city, not you',
+  },
 
-  // Picking a point on the map.
-  pickOnMap: { ru: 'Указать точку на карте', ka: 'წერტილის არჩევა რუკაზე', en: 'Pick a point on the map' },
-  pickOnMapCancel: { ru: 'Отменить выбор точки', ka: 'არჩევის გაუქმება', en: 'Cancel picking' },
-  pickOnMapHint: {
-    ru: 'Нажмите на карту — покажем остановки рядом с этой точкой',
-    ka: 'შეეხეთ რუკას — გაჩვენებთ ამ წერტილთან ახლოს მდებარე გაჩერებებს',
-    en: 'Tap the map and we’ll show the stops near that point',
-  },
-  stopsNearPoint: { ru: 'Остановки рядом с точкой', ka: 'გაჩერებები ამ წერტილთან', en: 'Stops near this point' },
-  noStopsNearPoint: {
-    ru: 'Рядом с этой точкой остановок нет',
-    ka: 'ამ წერტილთან ახლოს გაჩერება არ არის',
-    en: 'No stops near this point',
-  },
   cancel: { ru: 'Отмена', ka: 'გაუქმება', en: 'Cancel' },
 
   // Getting back to where the stop was chosen from.
   backToNearby: { ru: 'К остановкам рядом', ka: 'ახლომდებარე გაჩერებებზე', en: 'Back to stops near you' },
-  backToPickedPoint: { ru: 'К выбранной точке', ka: 'არჩეულ წერტილზე', en: 'Back to the picked point' },
+
+  // Planning a trip.
+  planTrip: { ru: 'Как добраться', ka: 'როგორ მივიდე', en: 'Directions' },
+  fromLabel: { ru: 'Откуда', ka: 'საიდან', en: 'From' },
+  toLabel: { ru: 'Куда', ka: 'სადამდე', en: 'To' },
+  chooseOnMap: { ru: 'Выбрать на карте', ka: 'რუკაზე არჩევა', en: 'Choose on the map' },
+  pointOnMap: { ru: 'Точка на карте', ka: 'წერტილი რუკაზე', en: 'Point on the map' },
+  pickFromHint: {
+    ru: 'Нажмите на карту, чтобы выбрать, откуда ехать',
+    ka: 'შეეხეთ რუკას, რომ აირჩიოთ, საიდან წახვალთ',
+    en: 'Tap the map to choose where to start',
+  },
+  pickToHint: {
+    ru: 'Нажмите на карту, чтобы выбрать, куда ехать',
+    ka: 'შეეხეთ რუკას, რომ აირჩიოთ, სად მიდიხართ',
+    en: 'Tap the map to choose where to go',
+  },
+  swapEnds: { ru: 'Поменять местами', ka: 'ადგილების გაცვლა', en: 'Swap start and destination' },
+  whenLabel: { ru: 'Когда', ka: 'როდის', en: 'When' },
+  leaveNow: { ru: 'Сейчас', ka: 'ახლა', en: 'Leave now' },
+  departAt: { ru: 'Отправление в', ka: 'გამგზავრება', en: 'Depart at' },
+  arriveBy: { ru: 'Прибыть к', ka: 'ჩასვლა', en: 'Arrive by' },
+  walk: { ru: 'Пешком', ka: 'ფეხით', en: 'Walk' },
+  tomorrow: { ru: 'завтра', ka: 'ხვალ', en: 'tomorrow' },
+  alsoAt: { ru: 'Ещё в', ka: 'ასევე', en: 'Also at' },
+  direct: { ru: 'Без пересадок', ka: 'გადაჯდომის გარეშე', en: 'Direct' },
+  hoursShort: { ru: 'ч', ka: 'სთ', en: 'h' },
+  noJourney: { ru: 'Не нашли, как добраться', ka: 'გზა ვერ მოიძებნა', en: 'No way there found' },
+  noJourneyDetail: {
+    ru: 'Попробуйте другое время или точку поблизости.',
+    ka: 'სცადეთ სხვა დრო ან ახლომდებარე წერტილი.',
+    en: 'Try another time, or a point nearby.',
+  },
+  noStopsNearFrom: {
+    ru: 'Рядом с началом пути нет остановок',
+    ka: 'საწყის წერტილთან გაჩერება არ არის',
+    en: 'No stops anywhere near the start',
+  },
+  noStopsNearTo: {
+    ru: 'Рядом с пунктом назначения нет остановок',
+    ka: 'დანიშნულების ადგილთან გაჩერება არ არის',
+    en: 'No stops anywhere near the destination',
+  },
+  needLocation: {
+    ru: 'Нужно ваше местоположение — разрешите доступ или выберите точку на карте',
+    ka: 'საჭიროა თქვენი მდებარეობა — დაუშვით წვდომა ან აირჩიეთ წერტილი რუკაზე',
+    en: 'This needs your location — allow access, or choose a point on the map',
+  },
+  // Lines that publish no timetable: how long the ride takes is known, when a
+  // bus comes is not, and the row has to say both.
+  untimedTitle: { ru: 'Линии без расписания', ka: 'ხაზები განრიგის გარეშე', en: 'Lines with no timetable' },
+  riding: { ru: 'в пути', ka: 'გზაში', en: 'on board' },
+  plusWait: { ru: '+ ожидание', ka: '+ ლოდინი', en: '+ the wait' },
+  planNote: {
+    ru: 'Время — по расписанию. Пешие отрезки — оценка: расстояние по прямой с поправкой на улицы.',
+    ka: 'დრო — განრიგით. ფეხით სავალი მონაკვეთები შეფასებაა: პირდაპირი მანძილი ქუჩების გათვალისწინებით.',
+    en: 'Times are from the timetable. Walks are estimates: the straight line, allowing for streets.',
+  },
+  estimatedTimesNote: {
+    ru: '≈ — время рассчитано нами: опубликованное расписание здесь не сходится с расстоянием.',
+    ka: '≈ — დრო ჩვენ მიერაა გამოთვლილი: გამოქვეყნებული განრიგი აქ მანძილს არ შეესაბამება.',
+    en: '≈ — our estimate: the published timetable here does not fit the distance.',
+  },
+  nextLive: { ru: 'Ближайший сейчас', ka: 'უახლოესი ახლა', en: 'Next, live' },
+  backToOptions: { ru: 'К вариантам', ka: 'ვარიანტებზე', en: 'Back to the options' },
+  backToTrip: { ru: 'К маршруту', ka: 'მარშრუტზე', en: 'Back to the trip' },
+  directionsFrom: { ru: 'Отсюда', ka: 'აქედან', en: 'From here' },
+  directionsTo: { ru: 'Сюда', ka: 'აქამდე', en: 'To here' },
+  editTrip: { ru: 'Изменить', ka: 'შეცვლა', en: 'Edit' },
+
+  // Sharing the app.
+  share: { ru: 'Поделиться', ka: 'გაზიარება', en: 'Share' },
+  shareTitle: { ru: 'Поделиться Сусаниным', ka: 'სუსანინის გაზიარება', en: 'Share Susanin' },
+  shareLead: {
+    ru: 'Отправьте ссылку или покажите код — камера телефона откроет его сразу.',
+    ka: 'გაგზავნეთ ბმული ან აჩვენეთ კოდი — ტელეფონის კამერა მას მაშინვე გახსნის.',
+    en: 'Send the link, or show the code — a phone camera opens it straight away.',
+  },
+  shareVia: { ru: 'Отправить…', ka: 'გაგზავნა…', en: 'Send…' },
+  copyLink: { ru: 'Скопировать ссылку', ka: 'ბმულის კოპირება', en: 'Copy link' },
+  linkCopied: { ru: 'Ссылка скопирована', ka: 'ბმული დაკოპირდა', en: 'Link copied' },
+  copyFailed: {
+    ru: 'Не удалось скопировать — выделите ссылку вручную',
+    ka: 'კოპირება ვერ მოხერხდა — მონიშნეთ ბმული ხელით',
+    en: 'Could not copy — select the link by hand',
+  },
+  downloadQr: { ru: 'Скачать QR-код', ka: 'QR კოდის ჩამოტვირთვა', en: 'Download the QR code' },
+  qrAlt: { ru: 'QR-код со ссылкой на Сусанин', ka: 'QR კოდი სუსანინის ბმულით', en: 'QR code linking to Susanin' },
+  printHint: {
+    ru: 'Код хорошо печатается — например, для остановки или стойки ресепшена.',
+    ka: 'კოდი კარგად იბეჭდება — მაგალითად, გაჩერებისთვის ან სასტუმროს რეცეფციისთვის.',
+    en: 'The code prints well — for a bus stop, say, or a hotel front desk.',
+  },
 
   toggleTheme: { ru: 'Сменить тему', ka: 'თემის შეცვლა', en: 'Toggle theme' },
   toggleSidebar: { ru: 'Показать панель', ka: 'პანელის ჩვენება', en: 'Toggle sidebar' },
@@ -222,6 +295,11 @@ export const counted = {
     ru: { one: 'остановка', few: 'остановки', many: 'остановок', other: 'остановки' },
     ka: { other: 'გაჩერება' },
     en: { one: 'stop', other: 'stops' },
+  },
+  transfers: {
+    ru: { one: 'пересадка', few: 'пересадки', many: 'пересадок', other: 'пересадки' },
+    ka: { other: 'გადაჯდომა' },
+    en: { one: 'change', other: 'changes' },
   },
 } as const satisfies Record<string, Record<Locale, PluralForms>>
 

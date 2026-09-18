@@ -2,11 +2,22 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type UserConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+import { site } from './vite.site.ts'
+
+/**
+ * Where the app is published — what the share page links to, what its QR code
+ * encodes, and what link previews point at. Read from the environment at build
+ * time (see .env.example) with the production address as the default, so a
+ * build needs no configuration. `new URL` throws on anything that is not an
+ * absolute URL, which is the point: a QR code for a typo is printed on paper.
+ */
+const siteUrl = new URL(process.env.SITE_URL || 'https://susanin-batumi.vercel.app/').href
 
 export default defineConfig(() => {
   return {
     plugins: [
       vue(),
+      site(siteUrl),
       VitePWA({
         /**
          * Off for the Capacitor build. Inside a packaged app the assets are
@@ -58,9 +69,9 @@ export default defineConfig(() => {
             {
               // The network — routes, stops, timetables. This is the whole point
               // of installing the app: at a bus stop with no signal you can
-              // still look up when the last bus goes. Served from cache first
-              // because it changes about once a year.
-              urlPattern: ({ url }) => /\/api\/(routes|stops)(\/[^/]+)?$/.test(url.pathname),
+              // still look up when the last bus goes, and plan how to get home.
+              // Served from cache first because it changes about once a year.
+              urlPattern: ({ url }) => /\/api\/((routes|stops)(\/[^/]+)?|timetable)$/.test(url.pathname),
               handler: 'StaleWhileRevalidate',
               options: {
                 cacheName: 'susanin-network',

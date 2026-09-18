@@ -37,6 +37,12 @@ export interface Route {
 export interface RouteDirection extends DirectionSummary {
   /** Stop ids in travel order. */
   stopIds: string[]
+  /**
+   * Metres along `shape` at which each stop sits, parallel to `stopIds` — the
+   * match made once when the network is built, so a client can cut the stretch
+   * of line between two stops without redoing it.
+   */
+  along: number[]
 }
 
 export interface RouteDetail extends Omit<Route, 'directions'> {
@@ -64,6 +70,12 @@ export interface StopSchedule {
   headsign: LocalizedName
   /** Scheduled departures from this stop, "HH:MM", ascending. */
   times: string[]
+  /**
+   * The times here are ours, not upstream's: the published ones put the bus
+   * somewhere no bus could be by then, so they were re-derived from distance.
+   * See schedule.ts. A client must mark them as estimates.
+   */
+  estimated: boolean
 }
 
 export interface StopDetail extends Stop {
@@ -110,6 +122,8 @@ export interface Arrival {
   scheduledMinutes: number | null
   /** The same moment as an instant, so a client in any timezone agrees. */
   scheduledAt: string | null
+  /** The scheduled time is our repair of an impossible published one. */
+  scheduledEstimated: boolean
   /**
    * Our own estimate from the nearest approaching vehicle. Upstream publishes
    * no predictions at all, so this is a derivation and is labelled as one.
@@ -136,4 +150,28 @@ export interface ArrivalEstimate {
   distanceMeters: number
   /** How many stops it still has to serve before this one. */
   stopsAway: number
+}
+
+/**
+ * One direction's timetable as trips, for planning a journey on the client.
+ *
+ * Every trip of a pattern keeps the same running times, so a trip is only its
+ * departure from the first stop, and the time at stop i is that plus
+ * `offsets[i]`. Times are minutes after midnight in Batumi — the timetable's own
+ * frame, and one timetable for every day, because that is all upstream keeps.
+ */
+export interface TimetablePattern {
+  routeId: string
+  direction: Direction
+  stopIds: string[]
+  /** Minutes after the first stop, one per stop. */
+  offsets: number[]
+  /**
+   * Departures from the first stop, ascending. Empty for a direction that
+   * publishes no timetable: its offsets are then ride times estimated from
+   * distance, and nothing can be said about when a bus comes.
+   */
+  departures: number[]
+  /** Per stop: the time is ours rather than upstream's. */
+  estimated: boolean[]
 }

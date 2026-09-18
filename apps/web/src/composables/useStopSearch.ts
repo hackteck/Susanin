@@ -1,4 +1,4 @@
-import { computed, type Ref } from 'vue'
+import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import type { Stop } from '@/api/types'
 import { useLocale } from '@/stores/locale'
 import { useTransit } from '@/stores/transit'
@@ -15,12 +15,12 @@ const LIMIT = 12
  * handle that is unambiguous in every language — which is why a numeric query
  * matches on it alone and ranks exact hits first.
  */
-export function useStopSearch(query: Ref<string>) {
+export function useStopSearch(query: MaybeRefOrGetter<string>) {
   const transit = useTransit()
   const locale = useLocale()
 
   const results = computed<Stop[]>(() => {
-    const term = query.value.trim().toLowerCase()
+    const term = toValue(query).trim().toLowerCase()
     if (term.length < 2) return []
 
     // Every locale at once: someone reading the Russian UI may still be typing

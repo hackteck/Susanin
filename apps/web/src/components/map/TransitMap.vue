@@ -56,6 +56,35 @@ export interface MapView {
   zoom: number;
 }
 
+/** A planned trip, already cut to shape: walks as dotted ink, rides in their line's colour. */
+export interface MapJourney {
+  legs: ({ kind: "walk"; points: [number, number][] } | { kind: "ride"; hue: number; points: [number, number][] })[];
+  /** Where the reader gets on and off — ringed in the line's colour so a change of bus is visible. */
+  stops: (MapPoint & { hue: number })[];
+}
+
+/** The two ends of a trip. "Me" is drawn by the location dot already, so a caller passes null for it. */
+export interface MapEndpoints {
+  from: MapPoint | null;
+  to: MapPoint | null;
+}
+
+/**
+ * A request to show an area, as data with a nonce — the same contract as
+ * `MapFlyTo`. It carries the room to leave for whatever the page has laid over
+ * the map, measured by the page, because only the page knows its sheet.
+ */
+export interface MapFit {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+  /** Pixels covered on the left (the desktop card) and at the bottom (the phone's sheet). */
+  left: number;
+  bottom: number;
+  nonce: number;
+}
+
 const props = withDefaults(
   defineProps<{
     stops: Stop[];
@@ -68,8 +97,10 @@ const props = withDefaults(
     userStale?: boolean;
     /** Armed for a point pick — the next tap on the map means "here". */
     picking?: boolean;
-    pickedPoint?: MapPoint | null;
+    journey?: MapJourney | null;
+    endpoints?: MapEndpoints | null;
     flyTo?: MapFlyTo | null;
+    fitTo?: MapFit | null;
     /** Which `name:` tag the basemap labels streets from. */
     lang?: string;
     dark?: boolean;
@@ -91,8 +122,10 @@ const props = withDefaults(
     userPosition: null,
     userStale: false,
     picking: false,
-    pickedPoint: null,
+    journey: null,
+    endpoints: null,
     flyTo: null,
+    fitTo: null,
     lang: "ru",
     dark: false,
     sources: null,
@@ -115,7 +148,7 @@ const $style = useCssModule();
 // Batumi's centre, and the box the network actually occupies — panning to
 // Tbilisi from a bus map is never what anyone meant to do.
 const CENTRE: L.LatLngExpression = [41.641, 41.63];
-const BOUNDS = L.latLngBounds([41.55, 41.5], [41.75, 41.78]);
+const BOUNDS = L.latLngBounds([41.5, 41.5], [41.77, 41.78]);
 /** Below this, 578 stop dots are a smear rather than information. */
 const STOPS_FROM_ZOOM = 15;
 /** Below this a route number cannot be read, so a bus becomes a coloured dot. */
@@ -148,12 +181,15 @@ let map: L.Map | undefined;
 let basemap: ReturnType<typeof leafletLayer> | undefined;
 let overview: ReturnType<typeof leafletLayer> | undefined;
 let shapeLayer: L.LayerGroup | undefined;
+let journeyLayer: L.LayerGroup | undefined;
 let accuracyLayer: L.LayerGroup | undefined;
 let stopLayer: L.LayerGroup | undefined;
+let journeyStopLayer: L.LayerGroup | undefined;
 let vehicleLayer: L.LayerGroup | undefined;
 let userHalo: L.Circle | undefined;
 let userMarker: L.Marker | undefined;
-let pickedMarker: L.Marker | undefined;
+let startMarker: L.Marker | undefined;
+let endMarker: L.Marker | undefined;
 
 interface Painted {
   marker: L.Marker;
@@ -402,31 +438,72 @@ const drawUser = () => {
   dot?.classList.toggle($style.isCoarse!, coarse);
 };
 
-/** The tapped point. Drawn instantly — a fade would read as a tap that missed. */
-const drawPickedPoint = () => {
-  if (!map) return;
+/**
+ * A planned trip. Walks are dotted and neutral, because a straight dotted line
+ * says "about this way, on foot" and a solid one would claim a path we do not
+ * have; rides are the line's own colour over a casing, exactly as a route is.
+ * Nothing here animates — the polylines rule in _motion.scss covers these too.
+ */
+const drawJourney = () => {
+  if (!journeyLayer || !journeyStopLayer) return;
+  journeyLayer.clearLayers();
+  journeyStopLayer.clearLayers();
 
-  if (!props.pickedPoint) {
-    pickedMarker?.remove();
-    pickedMarker = undefined;
-    return;
+  const journey = props.journey;
+  if (!journey) return;
+
+  for (const leg of journey.legs) {
+    if (leg.points.length < 2) continue;
+    if (leg.kind === "walk") {
+      L.polyline(leg.points, { className: $style.walkLine, weight: 4, interactive: false }).addTo(journeyLayer);
+      continue;
+    }
+    L.polyline(leg.points, { className: $style.casing, weight: 9, interactive: false }).addTo(journeyLayer);
+    const line = L.polyline(leg.points, { className: $style.line, weight: 6, interactive: false }).addTo(journeyLayer);
+    (line.getElement() as SVGElement | undefined)?.style.setProperty("--hue", String(leg.hue));
   }
 
-  const at: L.LatLngExpression = [props.pickedPoint.lat, props.pickedPoint.lon];
-
-  if (pickedMarker) {
-    pickedMarker.setLatLng(at);
-    return;
+  // Above the ordinary stop dots, which may sit a metre away: these are the
+  // few stops in the whole city the reader actually needs.
+  for (const stop of journey.stops) {
+    const marker = L.circleMarker([stop.lat, stop.lon], {
+      radius: 6,
+      weight: 3,
+      className: $style.journeyStop,
+      interactive: false,
+    }).addTo(journeyStopLayer);
+    (marker.getElement() as SVGElement | undefined)?.style.setProperty("--hue", String(stop.hue));
   }
+};
 
-  pickedMarker = L.marker(at, {
-    icon: L.divIcon({ className: $style.pickIcon, html: `<i class="${$style.pickDot}"></i>`, iconSize: [0, 0] }),
+/**
+ * Where the trip starts and ends — a hollow ring and a filled dot, the pair the
+ * sidebar's fields and the step list draw. Drawn instantly: a fade after a tap
+ * on the map reads as a tap that missed.
+ */
+const placeEndpoint = (existing: L.Marker | undefined, point: MapPoint | null, dotClass: string) => {
+  if (!map || !point) {
+    existing?.remove();
+    return undefined;
+  }
+  const at: L.LatLngExpression = [point.lat, point.lon];
+  if (existing) {
+    existing.setLatLng(at);
+    return existing;
+  }
+  return L.marker(at, {
+    icon: L.divIcon({ className: $style.endpointIcon, html: `<i class="${dotClass}"></i>`, iconSize: [0, 0] }),
     // Never interactive: a marker that ate the next tap would make a second
     // pick at the same place impossible.
     interactive: false,
     keyboard: false,
     zIndexOffset: 1500,
   }).addTo(map);
+};
+
+const drawEndpoints = () => {
+  startMarker = placeEndpoint(startMarker, props.endpoints?.from ?? null, $style.startDot!);
+  endMarker = placeEndpoint(endMarker, props.endpoints?.to ?? null, $style.endDot!);
 };
 
 /**
@@ -544,8 +621,10 @@ onMounted(() => {
   // Insertion order is paint order within the overlay pane, so the halo goes in
   // before the stops — a translucent disc over a stop dot hides it.
   shapeLayer = L.layerGroup().addTo(map);
+  journeyLayer = L.layerGroup().addTo(map);
   accuracyLayer = L.layerGroup().addTo(map);
   stopLayer = L.layerGroup().addTo(map);
+  journeyStopLayer = L.layerGroup().addTo(map);
   vehicleLayer = L.layerGroup().addTo(map);
 
   // A zoom rewrites every marker transform at once, and animating that reads as
@@ -573,10 +652,11 @@ onMounted(() => {
 
   zoom.value = map.getZoom();
   drawShapes();
+  drawJourney();
   drawStops();
   drawVehicles();
   drawUser();
-  drawPickedPoint();
+  drawEndpoints();
   reportView();
 });
 
@@ -606,7 +686,8 @@ watch(() => props.routeStops, drawStops);
 watch(() => props.vehicles, drawVehicles);
 watch(() => props.userPosition, drawUser);
 watch(() => props.userStale, drawUser);
-watch(() => props.pickedPoint, drawPickedPoint);
+watch(() => props.journey, drawJourney);
+watch(() => props.endpoints, drawEndpoints);
 watch(
   () => props.glideMs,
   (ms) => container.value?.style.setProperty("--glide", `${ms}ms`),
@@ -629,6 +710,29 @@ watch(
     const target = props.flyTo;
     if (!map || !target) return;
     map.flyTo([target.lat, target.lon], target.zoom ?? Math.max(map.getZoom(), 16), { duration: 0.8 });
+  },
+);
+
+// Showing a whole trip is the page's decision, like a fly: the map only knows
+// how to leave room for whatever the page has put over it.
+watch(
+  () => props.fitTo?.nonce,
+  () => {
+    const area = props.fitTo;
+    if (!map || !area) return;
+    const edge = 32;
+    map.flyToBounds(
+      [
+        [area.south, area.west],
+        [area.north, area.east],
+      ],
+      {
+        paddingTopLeft: [area.left + edge, edge],
+        paddingBottomRight: [edge, area.bottom + edge],
+        maxZoom: 17,
+        duration: 0.6,
+      },
+    );
   },
 );
 
@@ -726,8 +830,16 @@ watch(
   // or a bus pill. Making the two panes inert is one rule; branching every
   // marker's click handler would be twelve. The controls live in their own pane,
   // so zooming still works — picking a point you cannot see is not picking.
+  //
+  // The rule has to reach inside the panes. Leaflet gives every interactive
+  // marker and path `pointer-events: auto` of its own, which beats the `none`
+  // it would otherwise inherit, so a rule on the panes alone left each bus and
+  // stop dot answering taps — measured: a pick made on the city centre landed on
+  // the bus pill there and chose nothing. Three classes here against Leaflet's two.
   &.isPicking :global(.leaflet-overlay-pane),
-  &.isPicking :global(.leaflet-marker-pane) {
+  &.isPicking :global(.leaflet-marker-pane),
+  &.isPicking :global(.leaflet-overlay-pane *),
+  &.isPicking :global(.leaflet-marker-pane *) {
     pointer-events: none;
   }
 
@@ -798,7 +910,7 @@ watch(
 // Leaflet owns the marker's transform, so the dot inside does the centring —
 // the same split as the vehicle pill.
 .userIcon,
-.pickIcon {
+.endpointIcon {
   pointer-events: none;
 }
 
@@ -826,16 +938,44 @@ watch(
   background-color: transparent;
 }
 
-// A picked point is neither a stop nor a bus, so it is the map's neutral ink
-// rather than a twenty-ninth colour.
-.pickDot {
+// The ends of a trip are neither stops nor buses, so they are the map's neutral
+// ink — the chosen stop's inverted pair — rather than a twenty-ninth colour.
+.startDot,
+.endDot {
   display: block;
   transform: translate(-50%, -50%);
+  border-radius: 50%;
+  box-shadow: design.shadow(sm);
+}
+
+.startDot {
   width: design.spacing(4);
   height: design.spacing(4);
-  border: 2px dashed var(--pick-ring);
-  border-radius: 50%;
-  background-color: var(--pick-fill);
+  border: 4px solid var(--stop-selected-fill);
+  background-color: var(--stop-fill);
+}
+
+.endDot {
+  width: design.spacing(4.5);
+  height: design.spacing(4.5);
+  border: 3px solid var(--stop-selected-ring);
+  background-color: var(--stop-selected-fill);
+}
+
+// On foot: dotted, round-ended, in the ink the stop rings use. A dash pattern
+// set here beats Leaflet's `dashArray` attribute, as the colours do.
+.walkLine {
+  stroke: var(--stop-ring);
+  stroke-opacity: 0.9;
+  stroke-dasharray: 0.1 9;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.journeyStop {
+  stroke: oklch(var(--route-l) var(--route-c) var(--hue));
+  fill: var(--stop-fill);
+  fill-opacity: 1;
 }
 
 // The element Leaflet mounts into. Nothing reactive is bound to it.

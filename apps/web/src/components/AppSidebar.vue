@@ -2,7 +2,7 @@
   <Sidebar v-model:open="sidebar.open">
     <SidebarGroup :items="navItems" @select="navigate" />
     <Separator />
-    <StopSearch />
+    <JourneyPlanner />
     <Separator />
     <RouteFilter />
   </Sidebar>
@@ -11,12 +11,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute } from "vue-router";
-import { BusFront, Info, Map, Navigation } from "lucide";
+import { BusFront, Info, Map, Navigation, Share2 } from "lucide";
 import { Separator } from "@surstromming/separator";
 import { Sidebar } from "@surstromming/sidebar";
 import { SidebarGroup, type SidebarGroupItem } from "@surstromming/sidebar-group";
+import JourneyPlanner from "@/components/JourneyPlanner.vue";
 import RouteFilter from "@/components/RouteFilter.vue";
-import StopSearch from "@/components/StopSearch.vue";
 import { useSidebar } from "@/stores/sidebar";
 import { useLocale } from "@/stores/locale";
 import { useTransit } from "@/stores/transit";
@@ -34,10 +34,11 @@ const locale = useLocale();
 const route = useRoute();
 
 // The sidebar is shared by every page, including the ones that never load the
-// network for themselves — without this the route filter and the stop search
-// are both empty on those. Not awaited: they can appear a moment after the nav.
-// A failure here is the page's to report, not the sidebar's: it just stays
-// empty, and the rejection is not left to reach the console unhandled.
+// network for themselves — without this the route filter and the journey
+// planner's stop suggestions are both empty on those. Not awaited: they can
+// appear a moment after the nav. A failure here is the page's to report, not
+// the sidebar's: it just stays empty, and the rejection is not left to reach
+// the console unhandled.
 void useTransit()
   .loadNetwork()
   .catch(() => {});
@@ -59,6 +60,7 @@ const navItems = computed<SidebarGroupItem[]>(() => [
     icon: BusFront,
     active: route.path.startsWith("/routes"),
   },
+  { label: locale.t("share"), value: "/share", href: "/share", icon: Share2, active: route.path === "/share" },
   { label: locale.t("about"), value: "/about", href: "/about", icon: Info, active: route.path === "/about" },
 ]);
 </script>

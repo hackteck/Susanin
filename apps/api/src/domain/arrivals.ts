@@ -1,5 +1,5 @@
 import { projectOntoShape } from './geo.ts'
-import { getNetwork, type Network } from './network.ts'
+import { getNetwork, MAX_FIT_M, type Network } from './network.ts'
 import { getVehicles } from './vehicles.ts'
 import type { Arrival, ArrivalEstimate, Direction } from './model.ts'
 
@@ -52,12 +52,6 @@ function nextScheduled(times: string[], nowMinutes: number) {
 const MAX_VEHICLE_OFFSET_M = 250
 /** How far outside its direction's stretch a vehicle may still be matched. */
 const BAND_SLACK_M = 400
-/**
- * Above this, the shape and the stop chain disagree too much to measure along.
- * The real network sits at 5 m typical and 12 m at worst, so this is a wide
- * margin around "the line genuinely describes where the buses drive".
- */
-const MAX_FIT_M = 120
 /** Standing this long is a traffic light; the estimate absorbs it silently. */
 const STALL_IGNORE_S = 45
 /** Standing this long and the number is a guess we should mark as one. */
@@ -253,6 +247,7 @@ export async function getArrivals(stopId: string): Promise<Arrival[] | null> {
         // so it needs no timezone arithmetic and no assumption that Georgia
         // will never adopt DST.
         scheduledAt: scheduled.minutes === null ? null : new Date(now + scheduled.minutes * 60_000).toISOString(),
+        scheduledEstimated: schedule.estimated,
         estimate: estimateFor(network, schedule.routeId, stopId, schedule.direction, vehicles, now),
       }
     })

@@ -39,6 +39,7 @@ const copy = {
       body: [
         '28 маршрутов Батуми, 578 остановок и все автобусы, которые сейчас на линии — данные обновляются каждые 5 секунд.',
         'Нажмите на остановку, чтобы увидеть расписание и примерное время прибытия.',
+        '«Как добраться» строит поездку по расписанию — с пересадками и дорогой пешком до остановки и от неё. Планирование идёт на вашем устройстве: место, откуда вы едете, никуда не отправляется, а без связи всё работает по сохранённому расписанию.',
       ],
     },
     {
@@ -61,6 +62,7 @@ const copy = {
       body: [
         'ბათუმის 28 მარშრუტი, 578 გაჩერება და ავტობუსების ცოცხალი მდებარეობა, რომელიც ყოველ 5 წამში ახლდება.',
         'გაჩერებაზე დაწკაპუნებით ნახავთ განრიგს და სავარაუდო მოსვლის დროს.',
+        '„როგორ მივიდე“ მგზავრობას განრიგით აგებს — გადაჯდომებით და ფეხით გზით გაჩერებამდე და გაჩერებიდან. გეგმა თქვენს მოწყობილობაზე იქმნება: საიდან მიდიხართ, არსად იგზავნება, ხოლო კავშირის გარეშე ყველაფერი შენახული განრიგით მუშაობს.',
       ],
     },
     {
@@ -83,6 +85,7 @@ const copy = {
       body: [
         "Batumi's 28 bus routes, 578 stops, and every bus currently running, refreshed every 5 seconds.",
         'Tap a stop for its timetable and for how long the next bus looks like taking.',
+        'Directions plans a trip from the timetable — with changes of bus, and the walk to the stop and from it. The planning happens on your device: where you are setting off from is never sent anywhere, and with no signal it works from the saved timetable.',
       ],
     },
     {

@@ -29,6 +29,8 @@ export interface Route {
 
 export interface RouteDirection extends DirectionSummary {
   stopIds: string[]
+  /** Metres along `shape` for each stop — where to cut the line between two of them. */
+  along: number[]
 }
 
 export interface RouteDetail extends Omit<Route, 'directions'> {
@@ -52,6 +54,8 @@ export interface StopSchedule {
   direction: Direction
   headsign: LocalizedName
   times: string[]
+  /** Ours, not upstream's: the published times here are physically impossible. */
+  estimated: boolean
 }
 
 export interface StopDetail extends Stop {
@@ -96,6 +100,23 @@ export interface Arrival {
   scheduledTime: string | null
   scheduledMinutes: number | null
   scheduledAt: string | null
+  /** The scheduled time is our repair of an impossible published one. */
+  scheduledEstimated: boolean
   /** Ours, derived from live positions — never presented as a published time. */
   estimate: ArrivalEstimate | null
+}
+
+/**
+ * One direction's timetable as trips: the time at stop i of a trip is its
+ * departure plus `offsets[i]`, in minutes after midnight in Batumi.
+ */
+export interface TimetablePattern {
+  routeId: string
+  direction: Direction
+  stopIds: string[]
+  offsets: number[]
+  /** Empty when the line publishes no timetable — then only ride times are known. */
+  departures: number[]
+  /** Per stop: the time is our estimate, not upstream's. */
+  estimated: boolean[]
 }

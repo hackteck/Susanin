@@ -27,6 +27,15 @@ export const useTransit = defineStore('transit', () => {
    */
   const selectedRouteIds = ref<string[]>([])
 
+  /**
+   * A journey on the map narrows the live feed to its own lines — "where is my
+   * bus" — without touching the selection, which is the reader's and is still
+   * there when the journey is put away. Null means no journey is asking.
+   */
+  const focusRouteIds = ref<string[] | null>(null)
+  /** What the map draws and the poll asks for. Empty still means every route. */
+  const liveRouteIds = computed(() => focusRouteIds.value ?? selectedRouteIds.value)
+
   const routeById = computed(() => new Map(routes.value.map((route) => [route.id, route])))
   const stopById = computed(() => new Map(stops.value.map((stop) => [stop.id, stop])))
   const selectedRoutes = computed(() =>
@@ -34,8 +43,8 @@ export const useTransit = defineStore('transit', () => {
   )
 
   const visibleVehicles = computed(() =>
-    selectedRouteIds.value.length
-      ? vehicles.value.filter((vehicle) => selectedRouteIds.value.includes(vehicle.routeId))
+    liveRouteIds.value.length
+      ? vehicles.value.filter((vehicle) => liveRouteIds.value.includes(vehicle.routeId))
       : vehicles.value,
   )
 
@@ -107,6 +116,13 @@ export const useTransit = defineStore('transit', () => {
     selectedRouteIds.value = []
   }
 
+  // A re-planned journey on the same lines is not a new question for the feed,
+  // and an unchanged focus must not trigger a poll of its own.
+  const setFocus = (ids: string[] | null) => {
+    if (ids?.join() === focusRouteIds.value?.join()) return
+    focusRouteIds.value = ids
+  }
+
   let timer: number | undefined
   // Reactive, because the header may only claim a bus count on pages that are
   // actually polling — "0 buses running" beside a live arrival board is a lie.
@@ -123,7 +139,7 @@ export const useTransit = defineStore('transit', () => {
     // A hidden tab must not keep the upstream fan-out running.
     if (document.hidden) return
     try {
-      vehicles.value = await api.vehicles(selectedRouteIds.value.length ? selectedRouteIds.value : null)
+      vehicles.value = await api.vehicles(liveRouteIds.value.length ? liveRouteIds.value : null)
       missedPolls.value = 0
     } catch {
       // One dropped poll is not worth surfacing: the next one is five seconds
@@ -143,7 +159,7 @@ export const useTransit = defineStore('transit', () => {
   // half a poll — of a map that looks like it has lost the fleet, and long
   // enough that the reader starts pressing things. Only while something is
   // actually watching: nothing else should trigger the 28-way fan-out.
-  watch(selectedRouteIds, () => {
+  watch(liveRouteIds, () => {
     if (watching.value) void refreshVehicles()
   })
 
@@ -173,6 +189,7 @@ export const useTransit = defineStore('transit', () => {
     loading,
     failed,
     selectedRouteIds,
+    liveRouteIds,
     routeById,
     stopById,
     selectedRoutes,
@@ -187,6 +204,7 @@ export const useTransit = defineStore('transit', () => {
     toggleRoute,
     selectOnly,
     clearSelection,
+    setFocus,
     refreshVehicles,
     watchVehicles,
   }

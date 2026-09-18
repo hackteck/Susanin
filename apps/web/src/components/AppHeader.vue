@@ -44,11 +44,11 @@ const { theme, toggle: toggleTheme } = useTheme();
 
 const $style = useCssModule();
 
-// The count spans whatever is selected, so the noun has to agree with it: one
-// route picked is «на линии», and every other case — several picked, or none,
-// which draws all 28 — is «на линиях». Georgian inflects the same way; English
-// says neither.
-const lineForm = computed(() => (transit.selectedRouteIds.length === 1 ? "onTheLine" : "onTheLines"));
+// The count spans whatever is on the map, so the noun has to agree with it: one
+// line is «на линии», and every other case — several, or none, which draws all
+// 28 — is «на линиях». A journey's own lines count, not the selection behind
+// it. Georgian inflects the same way; English says neither.
+const lineForm = computed(() => (transit.liveRouteIds.length === 1 ? "onTheLine" : "onTheLines"));
 
 const themeIcon = computed(() => (theme.value === "dark" ? Sun : Moon));
 

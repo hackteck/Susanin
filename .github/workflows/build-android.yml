@@ -50,7 +50,16 @@ jobs:
       # The basemap is generated rather than committed, and a packaged app has no
       # network fallback for it at all: without this the map is blank on a phone
       # with no way for the reader to tell why. Cut before the web build, because
-      # Vite copies public/ verbatim into dist.
+      # Vite copies public/ verbatim into dist. Cached for the same reason as the
+      # deploy's: the pinned planet build ages out of Protomaps' bucket in a week.
+      - name: Restore the basemap
+        uses: actions/cache@v6
+        with:
+          path: |
+            .cache/basemap
+            apps/web/public/tiles
+          key: basemap-${{ runner.os }}-${{ hashFiles('tools/build-basemap.mjs') }}
+
       - name: Build the basemap extract
         run: npm run basemap
       # The one thing that genuinely differs from the web build. On the web the

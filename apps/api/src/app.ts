@@ -104,6 +104,15 @@ app.get('/stops/:id', async (context) => {
   return context.json(stop)
 })
 
+// The whole timetable as trips, for the journey planner — which runs in the
+// browser, so that planning from "where I am" never sends where I am anywhere,
+// and so that it still works with no signal once this has been fetched once.
+app.get('/timetable', async (context) => {
+  const network = await getNetwork()
+  context.header('Cache-Control', STATIC_CACHE)
+  return context.json(network.timetable)
+})
+
 app.get('/stops/:id/arrivals', async (context) => {
   const arrivals = await getArrivals(context.req.param('id'))
   if (!arrivals) return context.json({ error: 'stop not found' }, 404)

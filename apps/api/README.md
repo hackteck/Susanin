@@ -35,7 +35,8 @@ process**, and the CDN collapses every poller in a region into one of those.
 | `config.ts` | every setting, each with a working default — no env file required |
 | `upstream/thetamaps.ts` | the upstream's own PascalCase shapes, and the only `fetch` |
 | `domain/model.ts` | the shapes the frontend consumes; nothing upstream leaks past here |
-| `domain/network.ts` | dataset → routes, stops, stop chains, shapes |
+| `domain/network.ts` | dataset → routes, stops, stop chains, shapes, the timetable as trips |
+| `domain/schedule.ts` | per-stop times → trips, and the repair of running times no bus could keep |
 | `domain/vehicles.ts` | live positions, heading derived from consecutive samples, direction inferred |
 | `domain/arrivals.ts` | scheduled departures plus our own live estimates |
 | `domain/names.ts` + `names.data.json` | Russian and English stop names, from OpenStreetMap |
@@ -53,6 +54,7 @@ process**, and the CDN collapses every poller in a region into one of those.
     GET /api/stops[?bbox=s,w,n,e]    all stops
     GET /api/stops/:id               stop + per-route scheduled departures
     GET /api/stops/:id/arrivals      next scheduled times + live estimates
+    GET /api/timetable               every direction as trips, for the web app's planner
     GET /api/vehicles[?routes=a,b]   live vehicles, heading derived
 
 ## Where the data comes from
@@ -61,7 +63,7 @@ process**, and the CDN collapses every poller in a region into one of those.
 |---|---|---|
 | routes, stops, timetables, vehicle positions | `https://thetamaps.site:54321` — `/api/getDbData` and `/api/getBusLocsOnRoute?routeId=` | public and unauthenticated; **the origin, not a proxy**. The dataset is 1.27 MB and served without gzip, and positions exist only per route — which is what the cache is for. |
 | Russian and English stop names | OpenStreetMap, via Overpass | baked into `domain/names.data.json` at build time by `tools/build-names.mjs`. **© OpenStreetMap contributors, ODbL 1.0** — the licence travels in the file's own metadata and `namesAttribution` is exported so the app can show it. |
-| everything else | computed here | arrival estimates, heading, direction, `inService`, route hues. None of it comes from upstream, and the app must not present it as though it did. |
+| everything else | computed here | arrival estimates, heading, direction, `inService`, route hues, and repaired running times (`estimated: true`). None of it comes from upstream, and the app must not present it as though it did. |
 
 `UPSTREAM_BASE` repoints the feed: at a community mirror in an emergency, or at
 `tools/stub-upstream.mjs`, which serves the real dataset with synthetic buses
@@ -87,6 +89,12 @@ This project is unaffiliated with Batumi City Hall or any operator.
 - **Arrival times are ours**, derived from position along the shape. They are
   estimates, labelled as such, and five rules keep them honest — read the
   arrivals section of the root `CLAUDE.md` before touching them.
+- **Some published times are impossible**, and are repaired when the network is
+  built: a pattern averaging over 45 km/h is re-derived from distance, and any
+  stretch faster than 60 km/h is pushed later. The repair is written back into
+  the stop schedules and flagged `estimated`, so every surface gives one time
+  for one bus. `network.test.ts` guards both that nothing is too fast and that
+  what upstream got right is left byte for byte.
 - **`names.data.json` is generated**, by `tools/build-names.mjs`. Fix names by
   adding a hand override there with its reason and re-running, never by editing
   the JSON.

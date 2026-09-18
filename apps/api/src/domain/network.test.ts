@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getNetwork } from './network.ts'
+import { fetchDataset } from '../upstream/thetamaps.ts'
+import { getNetwork, MAX_FIT_M } from './network.ts'
+import { MAX_HOP_KMH } from './schedule.ts'
 
 /**
  * The map-matching quality guard, over the real network.
@@ -19,8 +21,6 @@ import { getNetwork } from './network.ts'
  * number went to infinity on two routes, which is how the metric was chosen.
  */
 
-/** Matches the threshold `arrivals.ts` uses before it refuses to estimate at all. */
-const MAX_FIT_M = 120
 /** Measured across the real network: 5 m typical, 12 m on the worst route. */
 const EXPECTED_TYPICAL_FIT_M = 40
 
@@ -115,4 +115,77 @@ test('a direction always knows where it is going', live, () => {
       assert.ok(schedule.headsign.ru, `stop ${stop.code}, route ${schedule.shortName}: no Russian headsign`)
     }
   }
+})
+
+test('every direction that publishes times lines up into trips', live, () => {
+  assert.ok(network)
+
+  // An untimed pattern is either a direction with no times at all, or one whose
+  // per-stop lists stopped lining up — and the second is upstream changing shape
+  // under us, which must be heard about here rather than as a planner that
+  // quietly stopped offering a line.
+  const broken = network.timetable.filter(
+    (pattern) =>
+      !pattern.departures.length &&
+      pattern.stopIds.some((id) =>
+        network.stops.get(id)?.schedules.some((s) => s.routeId === pattern.routeId && s.direction === pattern.direction && s.times.length),
+      ),
+  )
+
+  assert.deepEqual(
+    broken.map((pattern) => `${network.routes.get(pattern.routeId)?.shortName} direction ${pattern.direction}`),
+    [],
+  )
+  assert.ok(network.timetable.filter((pattern) => pattern.departures.length).length > 30, 'hardly any timed patterns')
+})
+
+test('no bus is scheduled faster than a bus can go', live, () => {
+  assert.ok(network)
+
+  // The published timetable does this in ten directions — route 8 inbound runs
+  // 13.8 km in three minutes — and the repair in schedule.ts is what stops it.
+  // Checked over every pair of stops, not every hop: a run of zero-minute hops
+  // is each fine alone and impossible together.
+  const tooFast: string[] = []
+
+  for (const pattern of network.timetable) {
+    if (!pattern.departures.length) continue
+    const leg = (network.stopsOnRoute.get(pattern.routeId) ?? []).filter((stop) => stop.direction === pattern.direction)
+    const along = leg.map((stop) => stop.along)
+
+    for (let from = 0; from < along.length; from++) {
+      for (let to = from + 1; to < along.length; to++) {
+        const minutes = pattern.offsets[to]! - pattern.offsets[from]! + 2
+        const kmh = (along[to]! - along[from]!) / 1000 / (minutes / 60)
+        if (kmh > MAX_HOP_KMH) {
+          tooFast.push(`${network.routes.get(pattern.routeId)?.shortName} d${pattern.direction} stops ${from}-${to}: ${Math.round(kmh)} km/h`)
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(tooFast.slice(0, 5), [])
+  // What the broken patterns are re-derived at. Measured at 19.6 km/h; a number
+  // far from that means the plausible patterns it is taken from have changed.
+  assert.ok(network.typicalKmh > 12 && network.typicalKmh < 30, `typical scheduled speed ${network.typicalKmh} km/h`)
+})
+
+test('a direction upstream got right keeps its published times', live, async () => {
+  assert.ok(network)
+  const raw = await fetchDataset()
+
+  let untouched = 0
+  for (const stop of network.stops.values()) {
+    for (const schedule of stop.schedules) {
+      if (schedule.estimated) continue
+      const published = [...(raw.data.busStops[stop.id]?.routes?.[schedule.routeId]?.times ?? [])].sort()
+      assert.deepEqual(schedule.times, published, `stop ${stop.code}, route ${schedule.shortName}`)
+      untouched++
+    }
+  }
+
+  // Most of the network is fine; a repair that reached everything would be a
+  // repair that stopped telling the difference.
+  const total = [...network.stops.values()].reduce((sum, stop) => sum + stop.schedules.length, 0)
+  assert.ok(untouched / total > 0.8, `only ${untouched} of ${total} schedules kept as published`)
 })

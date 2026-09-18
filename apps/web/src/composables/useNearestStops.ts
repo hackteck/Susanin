@@ -1,5 +1,8 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 import type { Route, Stop } from '@/api/types'
+import { metresBetween } from '@/planner/geo'
+import { ACCESS_MAX_METRES } from '@/planner/plan'
+import { walkingMinutes } from '@/planner/walking'
 import { useLocale } from '@/stores/locale'
 import { useTransit } from '@/stores/transit'
 
@@ -12,31 +15,21 @@ export interface NearestEntry {
   routes: Route[]
 }
 
-/** Beyond this it is not "nearby" any more, it is a different trip. */
-const MAX_METRES = 1200
+/**
+ * Beyond this it is not "nearby" any more, it is a different trip — the same
+ * radius the journey planner walks to a stop from, so the two agree on what
+ * "near" means.
+ */
+const MAX_METRES = ACCESS_MAX_METRES
 const SHOWN = 12
-/** A brisk walk. Deliberately not a routed time — Batumi has a river and a port. */
-const METRES_PER_MINUTE = 80
-
-export const metresBetween = (
-  a: { lat: number; lon: number },
-  b: { lat: number; lon: number },
-) => {
-  const toRad = (deg: number) => (deg * Math.PI) / 180
-  const dLat = toRad(b.lat - a.lat)
-  const dLon = toRad(b.lon - a.lon)
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2
-  return 2 * 6371000 * Math.asin(Math.sqrt(h))
-}
 
 /**
- * The stops around a point, nearest first. Extracted from the nearby page once a
- * third screen wanted the same list: three copies of a haversine and three
- * roundings of "320 м" would have drifted apart, and the map's sheet and the
- * nearby page disagreeing about the same stop's distance is worse than either
- * number being slightly off.
+ * The stops around a point, nearest first. Extracted once a third screen wanted
+ * the same list: three copies of a haversine and three roundings of "320 м"
+ * would have drifted apart, and two screens disagreeing about the same stop's
+ * distance is worse than either number being slightly off. The walk time is the
+ * journey planner's own model (planner/walking.ts), for the same reason: this
+ * list and a planned trip must not give the same walk two different times.
  */
 export function useNearestStops(
   anchor: Ref<{ lat: number; lon: number } | null>,
@@ -64,7 +57,7 @@ export function useNearestStops(
           entry.metres < 1000
             ? `${Math.round(entry.metres / 10) * 10} ${locale.t('metresAway')}`
             : `${(entry.metres / 1000).toFixed(1)} ${locale.t('kilometresAway')}`,
-        walkLabel: `${Math.max(1, Math.round(entry.metres / METRES_PER_MINUTE))} ${locale.t('walkMinutes')}`,
+        walkLabel: `${Math.max(1, Math.round(walkingMinutes(entry.metres)))} ${locale.t('walkMinutes')}`,
         routes: entry.stop.routeIds
           .map((id) => transit.routeById.get(id))
           .filter((route) => route !== undefined),

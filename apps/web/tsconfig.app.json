@@ -19,5 +19,8 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "src/**/*.vue"
-  ]
+  ],
+  // Tests run under Node, not in the browser, and are checked by
+  // tsconfig.test.json with Node's types instead.
+  "exclude": ["src/**/*.test.ts"]
 }

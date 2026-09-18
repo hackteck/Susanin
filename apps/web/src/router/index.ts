@@ -3,11 +3,21 @@ import { mapRoute } from '@/pages/map/mapRoute'
 import { routesRoute, routeDetailRoute } from '@/pages/routes/routesRoute'
 import { stopRoute } from '@/pages/stops/stopRoute'
 import { nearbyRoute } from '@/pages/nearby/nearbyRoute'
+import { shareRoute } from '@/pages/share/shareRoute'
 import { aboutRoute } from '@/pages/about/aboutRoute'
 import { notFoundRoute } from '@/pages/notfound/notFoundRoute'
 
 // Order here is the order pages appear in the sidebar.
-export const routes = [mapRoute, nearbyRoute, routesRoute, routeDetailRoute, stopRoute, aboutRoute, notFoundRoute]
+export const routes = [
+  mapRoute,
+  nearbyRoute,
+  routesRoute,
+  routeDetailRoute,
+  stopRoute,
+  shareRoute,
+  aboutRoute,
+  notFoundRoute,
+]
 
 export const router = createRouter({
   history: createWebHistory(),

@@ -15,6 +15,12 @@
         <p :class="$style.subtitle">{{ locale.t("stopNumber") }} {{ stop.code }}</p>
       </header>
 
+      <!-- A stop is somewhere a trip can start or end, here as on its map sheet. -->
+      <div :class="$style.endButtons">
+        <Button variant="outline" size="sm" @click="useStopAs('from')">{{ locale.t("directionsFrom") }}</Button>
+        <Button variant="outline" size="sm" @click="useStopAs('to')">{{ locale.t("directionsTo") }}</Button>
+      </div>
+
       <!-- One chip per route through this stop, each opening the map with only
            that route drawn. The routes are already named in the boards below,
            but there they answer "when" — here they answer "where does it go",
@@ -65,8 +71,10 @@
 import { computed, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { ArrowLeft, Map as MapIcon } from "lucide";
+import { Button } from "@surstromming/button";
 import { Icon } from "@surstromming/icon";
 import { ScrollArea } from "@surstromming/scroll-area";
+import { isMobile } from "@surstromming/util";
 import ArrivalBoard from "@/components/ArrivalBoard.vue";
 import RouteChip from "@/components/RouteChip.vue";
 import TimetableSection from "@/components/TimetableSection.vue";
@@ -74,22 +82,26 @@ import { api } from "@/api/client";
 import { useArrivals } from "@/composables/useArrivals";
 import { useNow } from "@/composables/useNow";
 import { useLocale } from "@/stores/locale";
+import { usePlanner, type PlaceField } from "@/stores/planner";
 import { useProximity } from "@/stores/proximity";
+import { useSidebar } from "@/stores/sidebar";
 import { useTransit } from "@/stores/transit";
 
 const route = useRoute();
 const router = useRouter();
 const locale = useLocale();
 const proximity = useProximity();
+const planner = usePlanner();
+const sidebar = useSidebar();
 const transit = useTransit();
 const now = useNow();
 
-// Where this stop was reached from. A picked point still lives in the store, so
-// returning to the map re-opens the sheet that produced this.
+// Where this stop was reached from. A trip still lives in the store, so
+// returning to the map puts it back on screen.
 const backTo = computed(() => (proximity.origin?.kind === "me" ? "/nearby" : "/"));
-const backKey = computed<"backToNearby" | "backToPickedPoint" | "backToMap">(() => {
+const backKey = computed<"backToNearby" | "backToTrip" | "backToMap">(() => {
   if (proximity.origin?.kind === "me") return "backToNearby";
-  if (proximity.origin?.kind === "point") return "backToPickedPoint";
+  if (planner.active) return "backToTrip";
   return "backToMap";
 });
 
@@ -116,6 +128,15 @@ const routesHere = computed(() => {
 const showRouteOnMap = (routeId: string) => {
   transit.selectOnly(routeId);
   void router.push("/");
+};
+
+// Straight to the map, where the fields and the answer both are; with the other
+// end still to fill, a phone opens its drawer to them.
+const useStopAs = async (field: PlaceField) => {
+  planner.setPlace(field, { kind: "stop", stopId: stop.id });
+  proximity.clearOrigin();
+  await router.push("/");
+  if (!planner.active && isMobile.value) sidebar.open = true;
 };
 
 const { arrivals, loading, failed } = useArrivals(ref(stopId));
@@ -187,6 +208,12 @@ const nowInBatumi = computed(() => batumiClock.format(new Date(now.value)));
   display: flex;
   flex-direction: column;
   gap: design.spacing(3);
+}
+
+.endButtons {
+  display: flex;
+  gap: design.spacing(2);
+  margin-top: calc(-1 * design.spacing(3));
 }
 
 .sectionTitle {

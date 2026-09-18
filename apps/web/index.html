@@ -47,11 +47,12 @@
       property="og:description"
       content="28 маршрутов, 578 остановок и все автобусы, которые сейчас на линии."
     />
-    <!-- Absolute, and the one place the production domain is written into the
-         app: scrapers do not resolve a relative image against the page, so a
-         relative path here meant no preview at all. -->
-    <meta property="og:url" content="https://susanin-batumi.vercel.app/" />
-    <meta property="og:image" content="https://susanin-batumi.vercel.app/icons/icon-512.png" />
+    <!-- Absolute: scrapers do not resolve a relative image against the page, so
+         a relative path here meant no preview at all. The address is SITE_URL,
+         filled in at build time by vite.site.ts — the same one the share page
+         and its QR code use, so the three cannot drift apart. -->
+    <meta property="og:url" content="__SITE_URL__" />
+    <meta property="og:image" content="__SITE_URL__icons/icon-512.png" />
     <meta name="twitter:card" content="summary" />
   </head>
   <body>

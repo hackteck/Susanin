@@ -1,4 +1,4 @@
-import type { Arrival, Route, RouteDetail, Stop, StopDetail, Vehicle } from './types'
+import type { Arrival, Route, RouteDetail, Stop, StopDetail, TimetablePattern, Vehicle } from './types'
 
 /**
  * Same origin on the web — Vite proxies `/api` in development and Vercel serves
@@ -30,6 +30,7 @@ export const api = {
   stops: (signal?: AbortSignal) => get<Stop[]>('/stops', signal),
   stop: (id: string, signal?: AbortSignal) => get<StopDetail>(`/stops/${id}`, signal),
   arrivals: (id: string, signal?: AbortSignal) => get<Arrival[]>(`/stops/${id}/arrivals`, signal),
+  timetable: (signal?: AbortSignal) => get<TimetablePattern[]>('/timetable', signal),
 
   /** No `routes` means every route, which is a fan-out — ask for what's shown. */
   vehicles: (routeIds: string[] | null, signal?: AbortSignal) =>

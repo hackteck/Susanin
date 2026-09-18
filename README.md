@@ -20,7 +20,8 @@ npm run dev          # API on :8787, web on :5173 (Vite proxies /api)
 ```
 
 Nothing to configure — every setting has a working default. See `.env.example`
-for what can be changed and why.
+for what can be changed and why, including `SITE_URL`, the address the Share page
+and its QR code point at.
 
 ```bash
 npm run build        # typecheck both apps, build the SPA
@@ -28,11 +29,13 @@ npm run typecheck
 npm test             # node --test — no framework, no config
 ```
 
-The tests cover the API, where being wrong is invisible: map-matching a bus to
+The tests cover what is invisible when wrong: in the API, map-matching a bus to
 the right leg of its route, transliterating a name without leaving Georgian
-behind, publishing a countdown that counts down. They run against the real
-upstream through `app.fetch`, so there is no server to start — and they skip
-with a reason rather than failing when the fleet has stopped for the night.
+behind, publishing a countdown that counts down, repairing a timetable that has a
+bus doing 275 km/h; in the web app, the journey planner — whether a change of bus
+leaves time to make it. The API's run against the real upstream through
+`app.fetch`, so there is no server to start — and they skip with a reason rather
+than failing when the fleet has stopped for the night.
 
 The UI is verified by looking at it. See `CLAUDE.md` for why the line is drawn
 there.
@@ -43,11 +46,18 @@ there.
   showing which way it is pointing. Filter to the routes you care about.
 - **Arrival countdowns** that tick down second by second and never count up,
   with the scheduled time beside them.
+- **Directions**, like a map app's: from where you are, a stop or a point on the
+  map, to another — options with changes of bus, the walk to the stop and from
+  it, leave-now, depart-at or arrive-by, and the first bus's live position beside
+  its scheduled time. Planned on your phone, so where you are never leaves it,
+  and it keeps working with no signal.
 - **Nearby stops**, sorted by distance, with a walk time.
-- **Search** by the number on the pole or by name — in Russian, Georgian or
-  English, whichever you happen to type.
-- **Timetables that work offline.** Install it, and the schedules, routes and
-  stops stay readable with no signal. Live positions do not, and the app says so
+- **Stop search** by the number on the pole or by name — in Russian, Georgian or
+  English, whichever you happen to type — in the same two fields.
+- **Sharing**: a page with the link, a QR code made at build time, and your
+  phone's own share sheet.
+- **Timetables that work offline.** Install it, and the schedules, routes, stops
+  and trip planning keep working with no signal. Live positions do not, and the app says so
   rather than showing you a bus that is not there.
 - Russian, Georgian and English; light and dark.
 
@@ -62,13 +72,13 @@ api/        Vercel entry point; mounts the same Hono app.
 ## Deploying
 
 Pushing to `master` runs `.github/workflows/vercel.yml`: typecheck and tests
-first, then Vercel's prebuilt flow. There is no post-deploy smoke test — the
-generated deployment URL sits behind Deployment Protection, so the workflow
-cannot reach it (`CLAUDE.md` has the reasoning). The static frontend will
-happily ship while the API function is broken, so after a deploy check
-`/api/health` on the production domain yourself.
+first, then Vercel's prebuilt flow, then a check that `/api/health` answers on
+the production domain (`SITE_URL`) — the generated deployment URL sits behind
+Deployment Protection, so the production domain is the one address a check can
+reach, and a static frontend otherwise ships happily over a broken API.
 
-It needs one secret, `VERCEL_TOKEN`, and no environment variables. Two settings
+It needs one secret, `VERCEL_TOKEN`, and no environment variables — set
+`SITE_URL` in the Vercel project only if the app moves to another address. Two settings
 worth reading `CLAUDE.md` about before changing: the function's `maxDuration`
 has to stay above `UPSTREAM_TIMEOUT_MS`, and the project's region should be set
 near Georgia rather than left at US East.
@@ -89,6 +99,7 @@ GET /api/routes/:id             + both directions' stop chains and the shape
 GET /api/stops                  all stops (optionally ?bbox=south,west,north,east)
 GET /api/stops/:id              + this stop's timetable, per route and direction
 GET /api/stops/:id/arrivals     next scheduled departures and live estimates
+GET /api/timetable              every direction as trips, for the journey planner
 GET /api/vehicles?routes=a,b    live positions; omit `routes` for the whole city
 ```
 
@@ -124,6 +135,13 @@ So this app derives what the feed doesn't provide:
   samples; upstream sends neither.
 - **Direction** is inferred from geometry, because upstream's own `Status` field
   reports -1 for about nine vehicles in ten.
+- **A timetable a bus could actually keep.** Three directions publish
+  intermediate times that are physically impossible (route 8 inbound: 13.8 km in
+  three minutes) and seven more have impossible stretches; those times are
+  re-derived from distance and marked `≈` wherever they are shown.
+- **Journeys.** There is no trip planner behind the feed; this one runs RAPTOR
+  over the timetable in the browser, with walking times calibrated against
+  routed walks in Batumi.
 - **Whether a bus is running at all** — the feed keeps reporting vehicles that
   finished hours ago, so anything that has not moved for ten minutes is drawn
   dimmed and excluded from the counts and the estimates.

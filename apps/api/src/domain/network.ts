@@ -1,6 +1,15 @@
 import { fetchDataset, type RawDataset, type RawStop } from '../upstream/thetamaps.ts'
 import { matchChain, measureShape, alignToChain, type MeasuredShape } from './geo.ts'
 import { lookupName } from './names.ts'
+import {
+  estimateRunningTimes,
+  formatMinutes,
+  inferTrips,
+  repairRunningTimes,
+  typicalSpeedKmh,
+  type RunningTimes,
+  type TripPattern,
+} from './schedule.ts'
 import { toCyrillic } from './translit.ts'
 import type {
   Direction,
@@ -11,6 +20,7 @@ import type {
   Stop,
   StopDetail,
   StopSchedule,
+  TimetablePattern,
 } from './model.ts'
 
 export interface StopOnRoute {
@@ -42,6 +52,15 @@ export interface DirectionBand {
   fitMeters: number
 }
 
+/**
+ * Above this, the shape and the stop chain disagree too much to measure along.
+ * The real network sits at 5 m typical and 15 m at worst, so this is a wide
+ * margin around "the line genuinely describes where the buses drive" — and past
+ * it neither an arrival estimate nor a timetable repair has a distance to stand
+ * on.
+ */
+export const MAX_FIT_M = 120
+
 export interface Network {
   routes: Map<string, RouteDetail>
   routeList: Route[]
@@ -53,6 +72,10 @@ export interface Network {
   stopsOnRoute: Map<string, StopOnRoute[]>
   /** Route id → direction → the shape range that direction covers. */
   bands: Map<string, Map<Direction, DirectionBand>>
+  /** Every direction as trips, repaired where upstream's times are impossible. */
+  timetable: TimetablePattern[]
+  /** Median scheduled speed of the plausible patterns, km/h — what repairs are made at. */
+  typicalKmh: number
 }
 
 const GEORGIAN = /[Ⴀ-ჿ]/
@@ -114,6 +137,8 @@ const buildNetwork = (raw: RawDataset): Network => {
   const stopsOnRoute = new Map<string, StopOnRoute[]>()
   const stopNames = new Map<string, LocalizedName>()
   const stops = new Map<string, StopDetail>()
+  /** `stop|route|direction` → its schedule, so a repaired time can be written back. */
+  const scheduleAt = new Map<string, StopSchedule>()
 
   const stopName = (raw: RawStop) =>
     localize(stripCode(clean(raw.BusStopNameKA), raw.BusStopNumber), stripCode(clean(raw.BusStopNameEN), raw.BusStopNumber))
@@ -130,7 +155,7 @@ const buildNetwork = (raw: RawDataset): Network => {
       const direction = asDirection(entry.Status)
       const times = [...(entry.times ?? [])].sort()
 
-      schedules.push({
+      const schedule: StopSchedule = {
         routeId,
         shortName: clean(route.RouteNameEN) || clean(route.RouteNameKA),
         hue: hues.get(routeId) ?? 0,
@@ -138,7 +163,10 @@ const buildNetwork = (raw: RawDataset): Network => {
         // Backfilled once the route loop below knows where each direction ends.
         headsign: { ka: '', en: '', ru: '' },
         times,
-      })
+        estimated: false,
+      }
+      schedules.push(schedule)
+      scheduleAt.set(`${stopId}|${routeId}|${direction}`, schedule)
 
       const list = stopsOnRoute.get(routeId) ?? []
       list.push({ stopId, direction, order: entry.Order, times, along: 0 })
@@ -223,6 +251,7 @@ const buildNetwork = (raw: RawDataset): Network => {
         to: stopNames.get(leg.at(-1)!.stopId) ?? { ka: '', en: '', ru: '' },
         stopCount: leg.length,
         stopIds: leg.map((stop) => stop.stopId),
+        along: leg.map((stop) => Math.round(stop.along)),
       })
     }
 
@@ -237,6 +266,8 @@ const buildNetwork = (raw: RawDataset): Network => {
     })
 
   }
+
+  const { timetable, typicalKmh } = buildTimetable(routes, stopsOnRoute, bands, scheduleAt)
 
   // A direction's destination is only known once its stop chain is ordered, so
   // the schedules built above get it here rather than being built twice.
@@ -271,7 +302,98 @@ const buildNetwork = (raw: RawDataset): Network => {
     shapes,
     stopsOnRoute,
     bands,
+    timetable,
+    typicalKmh,
   }
+}
+
+/**
+ * Trips for every direction, with impossible running times repaired — and the
+ * repair written back into the stop schedules, so the stop page, the arrival
+ * board and the journey planner all tell a rider the same time for the same
+ * bus. See schedule.ts for what counts as impossible and why.
+ *
+ * Two passes, because the speed a broken pattern is re-derived at is measured
+ * off the rest of the network rather than chosen.
+ */
+function buildTimetable(
+  routes: Map<string, RouteDetail>,
+  stopsOnRoute: Map<string, StopOnRoute[]>,
+  bands: Map<string, Map<Direction, DirectionBand>>,
+  scheduleAt: Map<string, StopSchedule>,
+): { timetable: TimetablePattern[]; typicalKmh: number } {
+  const legs: {
+    routeId: string
+    direction: Direction
+    leg: StopOnRoute[]
+    along: number[]
+    measurable: boolean
+    patterns: TripPattern[] | null
+  }[] = []
+
+  for (const route of routes.values()) {
+    for (const { direction } of route.directions) {
+      const leg = (stopsOnRoute.get(route.id) ?? []).filter((stop) => stop.direction === direction)
+      const fit = bands.get(route.id)?.get(direction)?.fitMeters ?? Infinity
+      legs.push({
+        routeId: route.id,
+        direction,
+        leg,
+        along: leg.map((stop) => stop.along),
+        measurable: fit <= MAX_FIT_M,
+        // No times anywhere is a direction without a timetable, which is a
+        // different thing from times that do not line up into trips.
+        patterns: leg.some((stop) => stop.times.length) ? inferTrips(leg.map((stop) => stop.times)) : [],
+      })
+    }
+  }
+
+  const typicalKmh = typicalSpeedKmh(
+    legs
+      .filter(({ measurable }) => measurable)
+      .flatMap(({ along, patterns }) => (patterns ?? []).map(({ offsets }) => ({ offsets, along }))),
+  )
+
+  const timetable: TimetablePattern[] = []
+
+  for (const { routeId, direction, leg, along, measurable, patterns } of legs) {
+    const stopIds = leg.map((stop) => stop.stopId)
+
+    // Times that do not line up are left on the stop pages exactly as
+    // published, and the planner treats the direction as untimed: better no
+    // departure than one read off the wrong trip.
+    if (!patterns?.length) {
+      const estimate = estimateRunningTimes(along, typicalKmh)
+      timetable.push({ routeId, direction, stopIds, ...estimate, departures: [] })
+      continue
+    }
+
+    const repaired = patterns.map((pattern) => ({
+      departures: pattern.departures,
+      ...(measurable
+        ? repairRunningTimes(pattern.offsets, along, typicalKmh)
+        : ({ offsets: pattern.offsets, estimated: pattern.offsets.map(() => false) } satisfies RunningTimes)),
+    }))
+
+    for (const pattern of repaired) timetable.push({ routeId, direction, stopIds, ...pattern })
+
+    // Written back only where something moved, so a direction upstream got right
+    // keeps its published strings byte for byte.
+    leg.forEach((stop, index) => {
+      if (!repaired.some((pattern) => pattern.estimated[index])) return
+      const times = repaired
+        .flatMap((pattern) => pattern.departures.map((departure) => formatMinutes(departure + pattern.offsets[index]!)))
+        .sort()
+      stop.times = times
+      const schedule = scheduleAt.get(`${stop.stopId}|${routeId}|${direction}`)
+      if (schedule) {
+        schedule.times = times
+        schedule.estimated = true
+      }
+    })
+  }
+
+  return { timetable, typicalKmh }
 }
 
 // Normalising 578 stops and 80k departure times is not free, and the raw

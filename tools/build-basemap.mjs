@@ -28,15 +28,28 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 // To bump it: pick a date that is listed at https://build.protomaps.com/, put it
 // here, run `npm run basemap -- --force`, and look at the map. It costs about
 // twenty seconds and forty range requests against Protomaps' bucket, plus a
-// fresh 6 MB download for every client once it ships. OSM's Batumi coverage
+// fresh 11 MB download for every client once it ships. OSM's Batumi coverage
 // moves slowly — once a year, or when someone reports a missing street, is the
 // right cadence.
-const PLANET_BUILD = '20260910'
-const PLANET_URL = `https://build.protomaps.com/${PLANET_BUILD}.pmtiles`
+//
+// A pin does not stay fetchable, though: the bucket keeps about a week of
+// builds. Checked on 2026-09-18, the 12th and the 15th–17th answered and the
+// 10th and 11th were 404 — so the 20260910 pin this file shipped with had
+// already made every clean build fail, and would have made the next deploy
+// fail, with nothing in the repo having changed. Two things stand between a
+// pin's age and a broken deploy: the deploy caches what it built (keyed on this
+// file, so the cache holds exactly this pin's bytes) and `resolvePlanet` below
+// falls back to the newest build that still exists, loudly, when the pin has
+// gone and nothing is cached.
+const PLANET_BUILD = '20260917'
+const planetUrl = (build) => `https://build.protomaps.com/${build}.pmtiles`
+
+/** How far back the fallback looks for a build that still exists. */
+const FALLBACK_DAYS = 21
 
 // The same rectangle as TransitMap.vue's BOUNDS:
 //
-//   const BOUNDS = L.latLngBounds([41.55, 41.5], [41.75, 41.78])
+//   const BOUNDS = L.latLngBounds([41.5, 41.5], [41.77, 41.78])
 //                                 [south, west]  [north, east]
 //
 // The map cannot be panned outside it, so a tile outside it could never be
@@ -44,7 +57,7 @@ const PLANET_URL = `https://build.protomaps.com/${PLANET_BUILD}.pmtiles`
 // min_lon,min_lat,max_lon,max_lat, which is the one place this is easy to get
 // wrong. Two files holding one rectangle is how one of them rots, so the build
 // re-reads BOUNDS out of the component and refuses to ship a disagreement.
-const BBOX = { west: 41.5, south: 41.55, east: 41.78, north: 41.75 }
+const BBOX = { west: 41.5, south: 41.5, east: 41.78, north: 41.77 }
 const BOUNDS_SOURCE = join(ROOT, 'apps/web/src/components/map/TransitMap.vue')
 
 // A second, deliberately coarse archive, and the reason it exists is that the
@@ -472,8 +485,14 @@ export const checkBoundsMatch = (source, bbox) => {
 
 // --- build -----------------------------------------------------------------
 
-const stampFor = (spec, sha) => ({
-  planetBuild: PLANET_BUILD,
+// `pinned` is what this file asked for and `planetBuild` what was actually cut —
+// the same, unless the pin had aged out and the fallback stood in. Freshness is
+// judged against the pin: an archive the fallback built for this pin stays
+// current for as long as the pin is unchanged, so a dead pin costs one fallback
+// build rather than a different map on every deploy.
+const stampFor = (spec, sha, planetBuild) => ({
+  pinned: PLANET_BUILD,
+  planetBuild,
   bbox: spec.bbox,
   maxZoom: spec.maxZoom,
   cli: CLI_VERSION,
@@ -482,27 +501,72 @@ const stampFor = (spec, sha) => ({
 
 const stampPath = (spec) => join(CACHE, `${spec.key}.json`)
 
-const isCurrent = (spec) => {
-  if (!existsSync(spec.out) || !existsSync(stampPath(spec))) return false
+const readStamp = (spec) => {
   try {
-    const stamp = JSON.parse(readFileSync(stampPath(spec), 'utf8'))
-    return (
-      JSON.stringify(stamp) === JSON.stringify(stampFor(spec, stamp.sha256)) &&
-      sha256(readFileSync(spec.out)) === stamp.sha256
-    )
+    return JSON.parse(readFileSync(stampPath(spec), 'utf8'))
   } catch {
-    return false
+    return null
   }
 }
 
-const cut = async (cli, spec, { force, dryRun }) => {
+const isCurrent = (spec) => {
+  if (!existsSync(spec.out)) return false
+  const stamp = readStamp(spec)
+  if (!stamp?.planetBuild) return false
+  return (
+    JSON.stringify(stamp) === JSON.stringify(stampFor(spec, stamp.sha256, stamp.planetBuild)) &&
+    sha256(readFileSync(spec.out)) === stamp.sha256
+  )
+}
+
+const ymd = (date) => date.toISOString().slice(0, 10).replaceAll('-', '')
+
+const annotate = (message) =>
+  // GitHub turns this into an annotation on the run's summary, where a warning
+  // that scrolled past in a log would otherwise be read by nobody.
+  process.env.GITHUB_ACTIONS ? console.log(`::warning title=basemap::${message.replace(/\n/g, '%0A')}`) : console.warn(`basemap: ${message}`)
+
+/**
+ * The pin if it still exists, else the newest build that does. A dead pin
+ * used to end the build with an instruction to re-pin; on a deploy that meant
+ * no deploy at all, a week after the last re-pin, for a reason nobody had
+ * touched. A map a few days newer than intended is the smaller surprise — and
+ * it is not a silent one: it is annotated on the run, and the manifest and the
+ * stamps record both dates.
+ */
+const resolvePlanet = async () => {
+  // Checked here rather than left to the extract: a build that was never
+  // published, or has aged out of the bucket, otherwise surfaces as a wall of
+  // range-request errors that says nothing about the cause.
+  const pinned = await fetch(planetUrl(PLANET_BUILD), { method: 'HEAD' })
+  if (pinned.ok) return { build: PLANET_BUILD, bytes: Number(pinned.headers.get('content-length')) }
+
+  for (let back = 0; back <= FALLBACK_DAYS; back++) {
+    const build = ymd(new Date(Date.now() - back * 86400000))
+    const head = await fetch(planetUrl(build), { method: 'HEAD' })
+    if (!head.ok) continue
+    annotate(
+      `the pinned planet build ${PLANET_BUILD} is gone (HEAD → ${pinned.status}); built from ${build} instead. ` +
+        'Look at the map and pin a current date from https://build.protomaps.com/ in tools/build-basemap.mjs.',
+    )
+    return { build, bytes: Number(head.headers.get('content-length')) }
+  }
+
+  die(
+    `neither the pinned planet build ${PLANET_BUILD} nor any build from the last ${FALLBACK_DAYS} days is available ` +
+      `(HEAD ${planetUrl(PLANET_BUILD)} → ${pinned.status}).\nCheck https://build.protomaps.com/.`,
+  )
+}
+
+const cut = async (cli, spec, { force, dryRun, planet }) => {
   if (spec.boundsSource) {
     const warning = checkBoundsMatch(spec.boundsSource, spec.bbox)
     if (warning) console.warn(`basemap: ${warning}`)
   }
 
   if (!dryRun && !force && isCurrent(spec)) {
-    console.log(`${relative(ROOT, spec.out).replace(/\\/g, '/')} is current for planet ${PLANET_BUILD} — rebuild with --force`)
+    const built = readStamp(spec).planetBuild
+    console.log(`${relative(ROOT, spec.out).replace(/\\/g, '/')} is current for planet ${built} — rebuild with --force`)
     return
   }
 
@@ -515,7 +579,7 @@ const cut = async (cli, spec, { force, dryRun }) => {
     cli,
     [
       'extract',
-      PLANET_URL,
+      planetUrl(planet.build),
       partial,
       `--bbox=${spec.bbox.west},${spec.bbox.south},${spec.bbox.east},${spec.bbox.north}`,
       `--maxzoom=${spec.maxZoom}`,
@@ -525,25 +589,26 @@ const cut = async (cli, spec, { force, dryRun }) => {
   )
   if (dryRun) return
 
-  const built = verifyArchive(cli, partial, { planetBuild: PLANET_BUILD, ...spec })
+  const built = verifyArchive(cli, partial, { planetBuild: planet.build, ...spec })
   rmSync(spec.out, { force: true })
   renameSync(partial, spec.out)
   mkdirSync(CACHE, { recursive: true })
-  writeFileSync(stampPath(spec), `${JSON.stringify(stampFor(spec, built.sha256), null, 2)}\n`)
+  writeFileSync(stampPath(spec), `${JSON.stringify(stampFor(spec, built.sha256, planet.build), null, 2)}\n`)
 }
 
 const report = (cli, spec) => {
   // Verified on every run, the skipped-rebuild path included: the artifacts are
   // gitignored, so the copies on this disk are the only ones anybody has.
-  const result = verifyArchive(cli, spec.out, { planetBuild: PLANET_BUILD, ...spec })
+  const planetBuild = readStamp(spec)?.planetBuild ?? PLANET_BUILD
+  const result = verifyArchive(cli, spec.out, { planetBuild, ...spec })
   console.log('')
   console.log(`  ${relative(ROOT, spec.out).replace(/\\/g, '/')}`)
   console.log(`  ${result.bytes.toLocaleString('en-US')} bytes  sha256 ${result.sha256}`)
   console.log(`  ${result.header.tileEntries} tiles, z${result.header.minZoom}–${result.header.maxZoom}, ${result.metadata.name} ${result.metadata.version}`)
-  console.log(`  OSM data ${result.metadata['planetiler:osm:osmosisreplicationtime']} (planet build ${PLANET_BUILD})`)
+  console.log(`  OSM data ${result.metadata['planetiler:osm:osmosisreplicationtime']} (planet build ${planetBuild})`)
   for (const line of result.languages) console.log(`  ${line}`)
   console.log(`  checked tile ${result.tile.z}/${result.tile.x}/${result.tile.y}, ${result.tile.bytes.toLocaleString('en-US')} bytes gzipped`)
-  return result
+  return { ...result, planetBuild }
 }
 
 const main = async () => {
@@ -553,21 +618,13 @@ const main = async () => {
 
   const cli = await ensureCli()
 
+  let planet = null
   if (dryRun || force || ARCHIVES.some((spec) => !isCurrent(spec))) {
-    // Checked here rather than left to the extract: a build date that was never
-    // published, or has aged out of the bucket, otherwise surfaces as a wall of
-    // range-request errors that says nothing about the cause.
-    const head = await fetch(PLANET_URL, { method: 'HEAD' })
-    if (!head.ok) {
-      die(
-        `the pinned planet build is not available: HEAD ${PLANET_URL} → ${head.status} ${head.statusText}\n` +
-          'Pick a date that is listed at https://build.protomaps.com/ and update PLANET_BUILD.',
-      )
-    }
-    console.log(`planet ${PLANET_BUILD}: ${(Number(head.headers.get('content-length')) / 1e9).toFixed(1)} GB upstream`)
+    planet = await resolvePlanet()
+    console.log(`planet ${planet.build}: ${(planet.bytes / 1e9).toFixed(1)} GB upstream`)
   }
 
-  for (const spec of ARCHIVES) await cut(cli, spec, { force, dryRun })
+  for (const spec of ARCHIVES) await cut(cli, spec, { force, dryRun, planet })
 
   if (dryRun) {
     console.log('\ndry run: nothing was written.')
@@ -575,10 +632,12 @@ const main = async () => {
   }
 
   let total = 0
-  const manifest = { planetBuild: PLANET_BUILD, archives: {} }
+  const manifest = { planetBuild: PLANET_BUILD, pinned: PLANET_BUILD, archives: {} }
   for (const spec of ARCHIVES) {
     const result = report(cli, spec)
     total += result.bytes
+    // What was actually cut, which is the pin unless the fallback stood in.
+    manifest.planetBuild = result.planetBuild
     manifest.archives[spec.key] = {
       url: `/tiles/${basename(spec.out)}`,
       bytes: result.bytes,

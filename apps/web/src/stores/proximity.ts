@@ -3,12 +3,13 @@ import { computed, ref, watch } from 'vue'
 import { useGeolocation, type GeoPermission, type Position } from '@/composables/useGeolocation'
 
 /**
- * What a nearby list is measured from. A picked point and "me" are the same
- * question asked about two different places, so they are one type rather than
- * two parallel features — which is also what makes "go back to where I was"
- * a single affordance instead of two.
+ * Where a stop was chosen from, when that was the list of stops near the reader.
+ * It is what the stop page's back row is derived from, rather than history, so a
+ * reloaded or shared link behaves like a tap. A point picked on the map used to
+ * be the second kind; picking now answers the journey planner instead, which
+ * keeps its own ends.
  */
-export type Origin = { kind: 'me' } | { kind: 'point'; lat: number; lon: number }
+export type Origin = { kind: 'me' }
 
 /** Past this a fix is old enough that the reader should be told, not just shown. */
 export const STALE_AFTER_MS = 60000
@@ -33,10 +34,6 @@ export const useProximity = defineStore('proximity', () => {
   const fix = ref<Position | null>(null)
   const permission = ref<GeoPermission>('unknown')
   const origin = ref<Origin | null>(null)
-  /** Armed by the map-pick button; the next tap on the map answers it. */
-  const pickMode = ref(false)
-  /** The map's nearest-stop bar, put away for the session once waved off. */
-  const nearestDismissed = ref(false)
 
   // The composable owns the browser call; the store owns the lifetime of what it
   // returns. Mirroring rather than re-exporting keeps a fix from being lost when
@@ -51,11 +48,9 @@ export const useProximity = defineStore('proximity', () => {
     if (next) fix.value = next
   })
 
-  /** A picked point wins over the fix: the reader asked about somewhere else. */
-  const anchor = computed<{ lat: number; lon: number } | null>(() => {
-    if (origin.value?.kind === 'point') return { lat: origin.value.lat, lon: origin.value.lon }
-    return fix.value ? { lat: fix.value.lat, lon: fix.value.lon } : null
-  })
+  const anchor = computed<{ lat: number; lon: number } | null>(() =>
+    fix.value ? { lat: fix.value.lat, lon: fix.value.lon } : null,
+  )
 
   const coarse = computed(() => !!fix.value && fix.value.accuracy > COARSE_ABOVE_M)
 
@@ -98,25 +93,8 @@ export const useProximity = defineStore('proximity', () => {
     if (!fix.value) locate()
   }
 
-  const arm = () => {
-    pickMode.value = true
-  }
-
-  const disarm = () => {
-    pickMode.value = false
-  }
-
-  const pickAt = (lat: number, lon: number) => {
-    origin.value = { kind: 'point', lat, lon }
-    pickMode.value = false
-  }
-
   const clearOrigin = () => {
     origin.value = null
-  }
-
-  const dismissNearest = () => {
-    nearestDismissed.value = true
   }
 
   return {
@@ -125,18 +103,12 @@ export const useProximity = defineStore('proximity', () => {
     denied,
     permission,
     origin,
-    pickMode,
-    nearestDismissed,
     anchor,
     coarse,
     init,
     locate,
     watchPosition,
     useMyLocation,
-    arm,
-    disarm,
-    pickAt,
     clearOrigin,
-    dismissNearest,
   }
 })

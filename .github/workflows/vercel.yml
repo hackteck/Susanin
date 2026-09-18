@@ -64,6 +64,20 @@ jobs:
           node-version: lts/*
           cache: npm
 
+      # The basemap is generated, not committed, and cut from a Protomaps planet
+      # build that their bucket keeps for about a week — so a clean checkout
+      # cannot always rebuild the pinned one. Cached on the script that pins it:
+      # while the pin and the rectangle are unchanged every deploy gets the same
+      # bytes without asking Protomaps anything, and a changed pin builds afresh.
+      # The script's own fallback covers a cold cache and a dead pin together.
+      - name: Restore the basemap
+        uses: actions/cache@v6
+        with:
+          path: |
+            .cache/basemap
+            apps/web/public/tiles
+          key: basemap-${{ runner.os }}-${{ hashFiles('tools/build-basemap.mjs') }}
+
       - name: Fetch project name from package.json
         id: project_name
         run: echo "PACKAGE_NAME=$(node -p "require('./package.json').name")" >> $GITHUB_OUTPUT
@@ -139,9 +153,55 @@ jobs:
           echo "url=$URL" >> $GITHUB_OUTPUT
           echo "Deployment: $URL" >> $GITHUB_STEP_SUMMARY
 
-      # No smoke test: Deployment Protection covers the generated deployment URL,
-      # so the URL a new deployment has is the one an unauthenticated request
-      # cannot reach. See CLAUDE.md.
+      # Deployment Protection covers the generated deployment URL, so the URL a
+      # new deployment has is the one an unauthenticated request cannot reach;
+      # the production domain is the one public address. It is read out of the
+      # build rather than restated here — og:url is SITE_URL, filled in by
+      # vite.site.ts — so the check and the site can never name two addresses.
+      #
+      # It asks the function for its health and accepts both answers the function
+      # gives: 200, and 503 when Batumi's feed is down, which is upstream's
+      # doing and not this deploy's. What fails is the function not answering at
+      # all — Vercel's own NOT_FOUND, a timeout, the SPA's HTML — which is how
+      # /api shipped broken twice with every step green. Before `remove --safe`,
+      # so a broken release leaves the previous deployment there to roll back to.
+      - name: Check the API answers on the production address
+        shell: node {0}
+        run: |
+          const { readFileSync } = require("fs");
+          const html = readFileSync(".vercel/output/static/index.html", "utf8");
+          const site = /<meta property="og:url" content="([^"]+)"/.exec(html)?.[1];
+          if (!site) {
+            console.error("::error::no og:url in the built index.html — cannot tell which address was deployed");
+            process.exit(1);
+          }
+          const url = new URL("api/health", site).href;
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          (async () => {
+            let last = "";
+            // The production alias moves to the new deployment a few seconds after
+            // `vercel deploy` returns, and a cold function fetches 1.27 MB first.
+            for (let attempt = 1; attempt <= 6; attempt++) {
+              try {
+                const response = await fetch(url, { signal: AbortSignal.timeout(40000), headers: { accept: "application/json" } });
+                const body = await response.text();
+                let status;
+                try { status = JSON.parse(body).status } catch {}
+                if ((response.status === 200 || response.status === 503) && (status === "ok" || status === "degraded")) {
+                  console.log(`${url} → ${response.status} ${status}`);
+                  if (status === "degraded") console.log("::warning::the API is up but Batumi's feed is not answering right now");
+                  return;
+                }
+                last = `${response.status} ${body.slice(0, 120).replace(/\s+/g, " ")}`;
+              } catch (error) {
+                last = error.message;
+              }
+              console.log(`attempt ${attempt}: ${last}`);
+              await sleep(10000);
+            }
+            console.error(`::error::${url} is not the API answering: ${last}`);
+            process.exit(1);
+          })();
 
       - name: Remove other deployments
         env:
