@@ -11,7 +11,7 @@ import { site } from './vite.site.ts'
  * build needs no configuration. `new URL` throws on anything that is not an
  * absolute URL, which is the point: a QR code for a typo is printed on paper.
  */
-const siteUrl = new URL(process.env.SITE_URL || 'https://susanin-batumi.vercel.app/').href
+const siteUrl = new URL(process.env.SITE_URL || 'https://susanin.mnatsakanov.dev/').href
 
 export default defineConfig(() => {
   return {

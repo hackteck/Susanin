@@ -7,7 +7,7 @@ on:
     inputs:
       api_base:
         description: >
-          Absolute URL of the deployed API, e.g. https://susanin.vercel.app/api.
+          Absolute URL of the deployed API, e.g. https://susanin.mnatsakanov.dev/api.
           A packaged app has no origin to serve /api from, so this is required.
         required: true
         type: string
