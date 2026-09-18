@@ -95,6 +95,8 @@ const props = withDefaults(
     userPosition?: MapUser | null;
     /** Dims the dot: the fix is old enough that it may no longer be true. */
     userStale?: boolean;
+    /** Which way the reader is facing, degrees clockwise from true north; null draws no beam. */
+    userHeading?: number | null;
     /** Armed for a point pick — the next tap on the map means "here". */
     picking?: boolean;
     journey?: MapJourney | null;
@@ -121,6 +123,7 @@ const props = withDefaults(
     focusStopId: null,
     userPosition: null,
     userStale: false,
+    userHeading: null,
     picking: false,
     journey: null,
     endpoints: null,
@@ -188,6 +191,7 @@ let journeyStopLayer: L.LayerGroup | undefined;
 let vehicleLayer: L.LayerGroup | undefined;
 let userHalo: L.Circle | undefined;
 let userMarker: L.Marker | undefined;
+let userBeam: L.Marker | undefined;
 let startMarker: L.Marker | undefined;
 let endMarker: L.Marker | undefined;
 
@@ -386,6 +390,11 @@ const drawVehicles = () => {
  * the overlay pane unconditionally — as a `circleMarker` it could never clear a
  * bus pill, and "which bus is nearest me" is the question it exists to answer.
  *
+ * The beam — which way the reader is facing — is a third piece, and a marker of
+ * its own rather than a child of the dot's, because it belongs *under* the
+ * buses: a translucent wedge washed over the pill of the bus beside you would
+ * tint the one thing you are trying to read. So stops < beam < buses < dot.
+ *
  * Nothing here moves the map. Deciding to fly because a fix arrived is app
  * logic, and doing it in here is exactly why the dot could never be re-centred:
  * the old code refused to fly a second time, by design.
@@ -398,8 +407,10 @@ const drawUser = () => {
   if (!fix) {
     userHalo?.remove();
     userMarker?.remove();
+    userBeam?.remove();
     userHalo = undefined;
     userMarker = undefined;
+    userBeam = undefined;
     return;
   }
 
@@ -430,12 +441,41 @@ const drawUser = () => {
     userMarker.setLatLng(at);
   }
 
+  if (!userBeam) {
+    userBeam = L.marker(at, {
+      icon: L.divIcon({ className: $style.userIcon, html: `<i class="${$style.beam}"></i>`, iconSize: [0, 0] }),
+      interactive: false,
+      keyboard: false,
+      // Below the buses at 1000, so a pill beside the reader stays its own colour.
+      zIndexOffset: 0,
+    }).addTo(map);
+  } else {
+    userBeam.setLatLng(at);
+  }
+
   // Toggled on the element rather than through the icon: replacing a divIcon is
   // the same mistake as `setIcon` on a vehicle — a new node, and the CSS state
   // it was carrying goes with the old one.
   const dot = userMarker.getElement()?.firstElementChild;
   dot?.classList.toggle($style.isStale!, props.userStale);
   dot?.classList.toggle($style.isCoarse!, coarse);
+  // It starts from the dot, so it inherits the dot's doubt about where that is.
+  userBeam.getElement()?.firstElementChild?.classList.toggle($style.isStale!, props.userStale);
+  drawHeading();
+};
+
+/**
+ * Written straight to the element, up to once a frame while the phone turns.
+ * No transition: the composable has already smoothed the reading, and easing it
+ * a second time would make the beam trail a turn the reader can feel themselves
+ * making.
+ */
+const drawHeading = () => {
+  const beam = userBeam?.getElement()?.firstElementChild as HTMLElement | null | undefined;
+  if (!beam) return;
+  const heading = props.userHeading;
+  beam.classList.toggle($style.hasHeading!, heading !== null);
+  if (heading !== null) beam.style.setProperty("--heading", `${heading}deg`);
 };
 
 /**
@@ -686,6 +726,7 @@ watch(() => props.routeStops, drawStops);
 watch(() => props.vehicles, drawVehicles);
 watch(() => props.userPosition, drawUser);
 watch(() => props.userStale, drawUser);
+watch(() => props.userHeading, drawHeading);
 watch(() => props.journey, drawJourney);
 watch(() => props.endpoints, drawEndpoints);
 watch(
@@ -936,6 +977,33 @@ watch(
 .isCoarse {
   border-style: dashed;
   background-color: transparent;
+}
+
+// Which way the reader is facing: a wedge of the dot's own blue, fading as it
+// leaves the dot. A wedge rather than an arrow, and a wide one, because a phone
+// compass beside buses and railings is good to tens of degrees and an arrow
+// would claim a precision the magnetometer has not got — the halo's lesson,
+// applied to direction.
+.beam {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: design.spacing(28);
+  height: design.spacing(28);
+  // Centre, then turn. Up is 0deg, which is north — the frame the heading is in.
+  transform: translate(-50%, -50%) rotate(var(--heading, 0deg));
+  background: radial-gradient(closest-side, var(--user-beam) 25%, transparent);
+  // Without the mask this is a second halo pointing nowhere, so the prefixed
+  // form is kept for the WebViews that still need it.
+  -webkit-mask-image: conic-gradient(from -35deg, transparent, #000 10deg, #000 60deg, transparent 70deg);
+  mask-image: conic-gradient(from -35deg, transparent, #000 10deg, #000 60deg, transparent 70deg);
+  pointer-events: none;
+  transition: opacity motion.$standard motion.$ease-micro;
+
+  &.hasHeading {
+    display: block;
+  }
 }
 
 // The ends of a trip are neither stops nor buses, so they are the map's neutral

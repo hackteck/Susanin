@@ -7,6 +7,7 @@
       :focus-stop-id="selectedStopId"
       :user-position="userPosition"
       :user-stale="userStale"
+      :user-heading="userHeading"
       :picking="picking"
       :journey="journeyOnMap"
       :endpoints="endpoints"
@@ -206,6 +207,7 @@ import ArrivalBoard from "@/components/ArrivalBoard.vue";
 import JourneyOptions from "@/components/JourneyOptions.vue";
 import JourneySteps from "@/components/JourneySteps.vue";
 import { nextBus, useArrivals, useArrivalsAt, type NextBus } from "@/composables/useArrivals";
+import { useCompass } from "@/composables/useCompass";
 import { useJourneyFormat } from "@/composables/useJourneyFormat";
 import { useNow } from "@/composables/useNow";
 import { useTheme } from "@/composables/useTheme";
@@ -255,6 +257,10 @@ onUnmounted(stopWatching);
 // walking. The watch stops with the page and pauses with the tab.
 const stopLocating = proximity.watchPosition();
 onUnmounted(stopLocating);
+
+// Which way the reader is facing, drawn as a beam from the dot — so it listens
+// only while there is a dot to draw it from.
+const { heading: userHeading, request: requestCompass } = useCompass(computed(() => !!proximity.fix));
 
 const root = useTemplateRef<HTMLElement>("root");
 const panel = useTemplateRef<HTMLElement>("panel");
@@ -322,7 +328,12 @@ const locateTitle = computed(() =>
 // It asks for a fix and nothing else. It used to set the stop page's "back to
 // stops near you" origin as well, so a stop opened from the map after pressing
 // it offered a way back to a list the reader had never seen.
+//
+// On iOS it is also where the compass is asked for, first and synchronously:
+// Safari lets a page ask only from inside a tap, and "where am I" is the one tap
+// that is already asking about the reader. Anywhere else that is a no-op.
 const onLocate = () => {
+  if (!proximity.denied) requestCompass();
   if (!proximity.fix) {
     proximity.locate();
     return;

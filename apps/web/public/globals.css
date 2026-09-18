@@ -32,6 +32,9 @@
      --route-casing are. */
   --user-accuracy-fill: oklch(0.55 0.22 258 / 14%);
   --user-accuracy-ring: oklch(0.55 0.22 258 / 35%);
+  /* The facing beam: stronger than the halo, since it is read at a glance
+     rather than through, and faded to nothing by its own gradient. */
+  --user-beam: oklch(0.55 0.22 258 / 55%);
 
 }
 
@@ -88,6 +91,7 @@
 
   --user-accuracy-fill: oklch(0.72 0.17 258 / 16%);
   --user-accuracy-ring: oklch(0.72 0.17 258 / 40%);
+  --user-beam: oklch(0.72 0.17 258 / 55%);
 
 }
 
