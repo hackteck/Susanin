@@ -157,6 +157,102 @@ const majority = (values) => {
  * that, an English translation tells a Russian reader more than a Cyrillic
  * sounding-out of words they do not know, and the sounding-out comes last.
  */
+/*
+ * Words that recur in the place names OSM has not translated — measured: 244 of
+ * them, and these are the words that come up — with what Russian and English
+ * call them. A name is translated only when every word in it is here: word by
+ * word through a language with cases and gender is how «Новый аптека» happens,
+ * so the nouns stand alone, and a phrase that needs agreement is an entry of its
+ * own. Loanwords are the reason this exists at all: «ჰორიზონტი», sounded out,
+ * is «Хоризонти», and every Russian reader knows it as «Горизонт».
+ *
+ * A capital in the translation marks a word that is a name, not a noun — it
+ * keeps its capital wherever it falls in the name.
+ */
+const WORDS = {
+  // Loanwords, as names.
+  ჰორიზონტი: ['Горизонт', 'Horizon'],
+  სპუტნიკი: ['Спутник', 'Sputnik'],
+  მაგნოლია: ['Магнолия', 'Magnolia'],
+  პალასი: ['Палас', 'Palace'],
+  ოაზისი: ['Оазис', 'Oasis'],
+  ვიტამინი: ['Витамин', 'Vitamin'],
+  ოლიმპი: ['Олимп', 'Olymp'],
+  ელიტი: ['Элит', 'Elite'],
+  ბრილიანტი: ['Бриллиант', 'Diamond'],
+  // Nouns.
+  სახლი: ['дом', 'house'],
+  რესტორანი: ['ресторан', 'restaurant'],
+  ცენტრი: ['центр', 'centre'],
+  მარკეტი: ['маркет', 'market'],
+  სუპერმარკეტი: ['супермаркет', 'supermarket'],
+  მინიმარკეტი: ['минимаркет', 'minimarket'],
+  მაღაზია: ['магазин', 'shop'],
+  ბაზარი: ['рынок', 'market'],
+  საცხობი: ['пекарня', 'bakery'],
+  წყარო: ['родник', 'spring'],
+  ეკლესია: ['церковь', 'church'],
+  ტაძარი: ['собор', 'cathedral'],
+  მონასტერი: ['монастырь', 'monastery'],
+  მეჩეთი: ['мечеть', 'mosque'],
+  სასტუმრო: ['гостиница', 'hotel'],
+  ჰოსტელი: ['хостел', 'hostel'],
+  ციხე: ['крепость', 'fortress'],
+  ბუფეტი: ['буфет', 'buffet'],
+  სალონი: ['салон', 'salon'],
+  წისქვილი: ['мельница', 'mill'],
+  სტადიონი: ['стадион', 'stadium'],
+  ხიდი: ['мост', 'bridge'],
+  ჩანჩქერი: ['водопад', 'waterfall'],
+  სამრეცხაო: ['прачечная', 'laundry'],
+  აფთიაქი: ['аптека', 'pharmacy'],
+  ბანკი: ['банк', 'bank'],
+  კაფე: ['кафе', 'café'],
+  ბარი: ['бар', 'bar'],
+  სკოლა: ['школа', 'school'],
+  ბაღი: ['сад', 'garden'],
+  პარკი: ['парк', 'park'],
+  საავადმყოფო: ['больница', 'hospital'],
+  კლინიკა: ['клиника', 'clinic'],
+  მუზეუმი: ['музей', 'museum'],
+  თეატრი: ['театр', 'theatre'],
+  ბიბლიოთეკა: ['библиотека', 'library'],
+  ფოსტა: ['почта', 'post office'],
+  პორტი: ['порт', 'port'],
+  სადგური: ['станция', 'station'],
+  ავტოსადგური: ['автостанция', 'bus station'],
+  ლაბორატორია: ['лаборатория', 'laboratory'],
+  ვულკანიზაცია: ['шиномонтаж', 'tyre repair'],
+  აპარტამენტები: ['апартаменты', 'apartments'],
+  შაურმა: ['шаурма', 'shawarma'],
+  ხინკალი: ['хинкали', 'khinkali'],
+  ხაჭაპური: ['хачапури', 'khachapuri'],
+  პიცა: ['пицца', 'pizza'],
+}
+/** Phrases whose words agree with each other in Russian, so cannot be put together word by word. */
+const PHRASES = {
+  'ქართული სამზარეულო': ['Грузинская кухня', 'Georgian cuisine'],
+  'ქართული რესტორანი': ['Грузинский ресторан', 'Georgian restaurant'],
+  'საჯარო სკოლა': ['Публичная школа', 'Public school'],
+  'სილამაზის სალონი': ['Салон красоты', 'Beauty salon'],
+  'ავეჯის მაღაზია': ['Мебельный магазин', 'Furniture shop'],
+  'ხორცის მაღაზია': ['Мясной магазин', 'Butcher'],
+  'ძველი წისქვილი': ['Старая мельница', 'Old mill'],
+  'ოჯახური სასტუმრო': ['Семейная гостиница', 'Family hotel'],
+  'საოჯახო სასტუმრო': ['Семейная гостиница', 'Family hotel'],
+}
+
+/** A name every word of which is known, in Russian and English — or nothing. */
+function translated(ka) {
+  const phrase = PHRASES[ka.toLowerCase()]
+  if (phrase) return { ru: phrase[0], en: phrase[1] }
+  const words = ka.split(' ')
+  if (!words.every((word) => WORDS[word] || /^[\d№#-]+$/.test(word))) return null
+  const put = (locale) =>
+    capitalise(words.map((word) => (WORDS[word] ? WORDS[word][locale] : word)).join(' '))
+  return { ru: put(0), en: put(1) }
+}
+
 /** A "translation" still in Georgian script is a mapper's slip, not a translation. */
 const translation = (value) => (value && !GEORGIAN.test(value) ? value : undefined)
 
@@ -165,8 +261,9 @@ function placeNames(tags) {
   const ka = ws(tags['name:ka']) || name
   const readable = translation(name)
   const english = translation(ws(tags['name:en']))
-  const en = english || readable || toLatin(ka)
-  const ru = translation(ws(tags['name:ru'])) || readable || english || cyrillic(ka)
+  const known = translated(ka)
+  const en = english || readable || known?.en || toLatin(ka)
+  const ru = translation(ws(tags['name:ru'])) || readable || known?.ru || english || cyrillic(ka)
   return { ka, ru, en }
 }
 

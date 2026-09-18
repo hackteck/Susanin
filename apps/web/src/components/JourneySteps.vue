@@ -8,7 +8,6 @@
           <span :class="$style.body">
             <b :class="$style.title">{{ step.label }}</b>
           </span>
-          <time :class="$style.time">{{ step.time }}</time>
         </template>
 
         <template v-else-if="step.kind === 'stop'">
@@ -20,7 +19,6 @@
             </button>
             <span :class="$style.detail">{{ step.detail }}</span>
           </span>
-          <time :class="$style.time">{{ step.time }}</time>
         </template>
 
         <template v-else-if="step.kind === 'walk'">
@@ -35,7 +33,9 @@
         <template v-else>
           <span :class="$style.body">
             <span :class="$style.rideHead">
-              <RouteChip :short-name="step.shortName" :hue="step.hue" size="sm" />
+              <span :class="$style.chips">
+                <RouteChip v-for="line in step.lines" :key="line.shortName" :short-name="line.shortName" :hue="line.hue" size="sm" />
+              </span>
               <span :class="$style.headsign">{{ step.headsign }}</span>
             </span>
             <span :class="$style.detail">{{ step.detail }}</span>
@@ -43,13 +43,11 @@
               <i :class="$style.liveDot" />
               {{ step.live }}
             </span>
-            <span v-if="step.later" :class="$style.detail">{{ step.later }}</span>
+            <span v-if="step.turns" :class="$style.detail">{{ step.turns }}</span>
           </span>
         </template>
       </li>
     </ol>
-
-    <p v-if="journey.estimated" :class="$style.note">{{ locale.t("estimatedTimesNote") }}</p>
   </div>
 </template>
 
@@ -58,20 +56,15 @@ import { computed, useCssModule } from "vue";
 import { Footprints } from "lucide";
 import { Icon } from "@surstromming/icon";
 import RouteChip from "@/components/RouteChip.vue";
+import type { NextBus } from "@/composables/useArrivals";
 import { useJourneyFormat } from "@/composables/useJourneyFormat";
 import { useNow } from "@/composables/useNow";
 import type { Journey, RideLeg } from "@/planner/plan";
 import { useLocale } from "@/stores/locale";
 import { useTransit } from "@/stores/transit";
 
-/** The nearest bus of the first ride's line, as the live feed sees it. */
-export interface JourneyLive {
-  arrivesAt: string;
-  confidence: "live" | "slow";
-}
-
 const props = withDefaults(
-  defineProps<{ journey: Journey; fromLabel: string; toLabel: string; live?: JourneyLive | null }>(),
+  defineProps<{ journey: Journey; fromLabel: string; toLabel: string; live?: NextBus | null }>(),
   { live: null },
 );
 const emit = defineEmits<{ selectStop: [stopId: string] }>();
@@ -82,70 +75,75 @@ const format = useJourneyFormat();
 const now = useNow();
 const $style = useCssModule();
 
+interface Line {
+  shortName: string;
+  hue: number;
+}
+
 type Step =
-  | { kind: "place"; mark: "start" | "end"; label: string; time: string; style?: undefined }
-  | { kind: "stop"; stopId: string; label: string; detail: string; time: string; style: Record<string, string> }
+  | { kind: "place"; mark: "start" | "end"; label: string; style?: undefined }
+  | { kind: "stop"; stopId: string; label: string; detail: string; style: Record<string, string> }
   | { kind: "walk"; label: string; style?: undefined }
   | {
       kind: "ride";
-      shortName: string;
-      hue: number;
+      lines: Line[];
       headsign: string;
       detail: string;
       live: string;
-      later: string;
+      turns: string;
       style: Record<string, string>;
     };
 
-/** Under this the bus is at the kerb, as on the arrival board. */
-const DUE_SECONDS = 45;
-
-// The same reading as the arrival board's countdown: a word once it is due, the
-// ≈ once the bus is barely moving, and nothing once it has been and gone.
+// The first bus as the live feed sees it, read the way the arrival board reads
+// a countdown — and named when the ride has a choice of lines, since the soonest
+// may be any of them.
 const liveLabel = computed(() => {
   if (!props.live) return "";
-  const seconds = (Date.parse(props.live.arrivesAt) - now.value) / 1000;
-  if (seconds < -90) return "";
-  if (seconds <= DUE_SECONDS) return `${locale.t("nextLive")}: ${locale.t("approaching").toLowerCase()}`;
-  const soft = props.live.confidence === "slow" ? "≈" : "";
-  return `${locale.t("nextLive")}: ${soft}${Math.ceil(seconds / 60)} ${locale.t("minutesShort")}`;
+  const countdown = format.countdown(props.live, now.value);
+  if (!countdown) return "";
+  const line = transit.routeById.get(props.live.routeId)?.shortName;
+  return `${locale.t("nextLive")}${line ? ` ${line}` : ""}: ${countdown}`;
 });
 
-const stopStep = (stopId: string, time: string, hue: number): Step => {
+const stopName = (id: string) => {
+  const stop = transit.stopById.get(id);
+  return stop ? locale.name(stop.name) : "";
+};
+
+const stopStep = (stopId: string, hue: number): Step => {
   const stop = transit.stopById.get(stopId);
   return {
     kind: "stop",
     stopId,
     label: stop ? locale.name(stop.name) : "",
     detail: stop ? `${locale.t("stopNumber")} ${stop.code}` : "",
-    time,
     style: { "--hue": String(hue) },
   };
 };
 
+const line = (routeId: string): Line => ({
+  shortName: transit.routeById.get(routeId)?.shortName ?? "?",
+  hue: transit.routeById.get(routeId)?.hue ?? 0,
+});
+
 const rideStep = (leg: RideLeg, first: boolean): Step => {
   const route = transit.routeById.get(leg.routeId);
-  const headsign = route?.directions.find((candidate) => candidate.direction === leg.direction)?.to;
-  const hops = leg.stopIds.length - 1;
-  const approx = leg.estimated ? "≈ " : "";
+  const headsign = route?.directions.find((candidate) => candidate.direction === leg.heading)?.to;
   return {
     kind: "ride",
-    shortName: route?.shortName ?? "?",
-    hue: route?.hue ?? 0,
+    lines: [leg.routeId, ...(leg.also ?? []).map((other) => other.routeId)].map(line),
     headsign: headsign ? `→ ${locale.name(headsign)}` : "",
-    detail: `${approx}${locale.plural(hops, "stops")} · ${format.span(leg.depart, leg.arrive)}`,
+    detail: `${locale.plural(leg.stopIds.length - 1, "stops")} · ≈ ${format.duration(leg.minutes)}`,
     // Live only for the first bus: that is the one the reader is deciding
     // whether to run for; the later ones depend on it anyway.
     live: first ? liveLabel.value : "",
-    later: leg.later.length ? `${locale.t("alsoAt")} ${leg.later.map(format.departTime).join(", ")}` : "",
+    turns: leg.turnsAtStopId ? `${locale.t("staysOn")}: ${stopName(leg.turnsAtStopId)}` : "",
     style: { "--hue": String(route?.hue ?? 0) },
   };
 };
 
 const steps = computed<Step[]>(() => {
-  const list: Step[] = [
-    { kind: "place", mark: "start", label: props.fromLabel, time: format.departTime(props.journey.depart) },
-  ];
+  const list: Step[] = [{ kind: "place", mark: "start", label: props.fromLabel }];
   let lastStop: string | null = null;
   let firstRide = true;
 
@@ -157,22 +155,16 @@ const steps = computed<Step[]>(() => {
     }
 
     const hue = transit.routeById.get(leg.routeId)?.hue ?? 0;
-    const approx = leg.estimated ? "≈" : "";
     // Changing at the same pole is one stop in the list, not an arrival and a
     // departure pretending to be two places.
-    if (lastStop === leg.fromStopId) {
-      const previous = list.at(-1);
-      if (previous?.kind === "stop") previous.time = `${previous.time} → ${approx}${format.departTime(leg.depart)}`;
-    } else {
-      list.push(stopStep(leg.fromStopId, `${approx}${format.departTime(leg.depart)}`, hue));
-    }
+    if (lastStop !== leg.fromStopId) list.push(stopStep(leg.fromStopId, hue));
     list.push(rideStep(leg, firstRide));
-    list.push(stopStep(leg.toStopId, `${approx}${format.arriveTime(leg.arrive)}`, hue));
+    list.push(stopStep(leg.toStopId, hue));
     lastStop = leg.toStopId;
     firstRide = false;
   }
 
-  list.push({ kind: "place", mark: "end", label: props.toLabel, time: format.arriveTime(props.journey.arrive) });
+  list.push({ kind: "place", mark: "end", label: props.toLabel });
   return list;
 });
 
@@ -205,7 +197,7 @@ const stepClasses = (step: Step) => [
   position: relative;
   gap: design.spacing(3);
   align-items: start;
-  grid-template-columns: design.spacing(4) 1fr auto;
+  grid-template-columns: design.spacing(4) 1fr;
   min-height: design.spacing(8);
   padding: design.spacing(1) 0;
 }
@@ -315,11 +307,10 @@ const stepClasses = (step: Step) => [
   white-space: nowrap;
 }
 
-.time {
-  color: design.color(foreground);
-  font-size: 0.8125rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+.chips {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: design.spacing(0.5);
 }
 
 .live {
@@ -337,12 +328,5 @@ const stepClasses = (step: Step) => [
   height: design.spacing(1.5);
   border-radius: 50%;
   background-color: design.color(chart-2);
-}
-
-.note {
-  color: design.color(muted-foreground);
-  font-size: 0.75rem;
-  line-height: 1.4;
-  text-wrap: pretty;
 }
 </style>

@@ -39,7 +39,7 @@ const copy = {
       body: [
         '28 маршрутов Батуми, 578 остановок и все автобусы, которые сейчас на линии — данные обновляются каждые 5 секунд.',
         'Нажмите на остановку, чтобы увидеть расписание и примерное время прибытия.',
-        '«Как добраться» строит поездку по расписанию — с пересадками и дорогой пешком до остановки и от неё. Адрес ищется и поездка планируется на вашем устройстве: ни то, что вы ищете, ни место, откуда вы едете, никуда не отправляется, а без связи всё работает по сохранённым данным.',
+        '«Как добраться» подбирает автобусы по маршрутам — с пересадками и дорогой пешком до остановки и от неё. Время в пути мы оцениваем по расстоянию, а когда придёт ближайший автобус, показываем по его текущему положению. Адрес ищется и поездка планируется на вашем устройстве: ни то, что вы ищете, ни место, откуда вы едете, никуда не отправляется, а без связи всё работает по сохранённым данным.',
       ],
     },
     {
@@ -62,7 +62,7 @@ const copy = {
       body: [
         'ბათუმის 28 მარშრუტი, 578 გაჩერება და ავტობუსების ცოცხალი მდებარეობა, რომელიც ყოველ 5 წამში ახლდება.',
         'გაჩერებაზე დაწკაპუნებით ნახავთ განრიგს და სავარაუდო მოსვლის დროს.',
-        '„როგორ მივიდე“ მგზავრობას განრიგით აგებს — გადაჯდომებით და ფეხით გზით გაჩერებამდე და გაჩერებიდან. მისამართის ძებნა და გეგმა თქვენს მოწყობილობაზე ხდება: არც ის, რასაც ეძებთ, და არც ის, საიდან მიდიხართ, არსად იგზავნება, ხოლო კავშირის გარეშე ყველაფერი შენახული მონაცემებით მუშაობს.',
+        '„როგორ მივიდე“ ავტობუსებს მარშრუტების მიხედვით არჩევს — გადაჯდომებით და ფეხით გზით გაჩერებამდე და გაჩერებიდან. მგზავრობის დროს მანძილით ვაფასებთ, ხოლო როდის მოვა უახლოესი ავტობუსი — მისი ამჟამინდელი მდებარეობით. მისამართის ძებნა და გეგმა თქვენს მოწყობილობაზე ხდება: არც ის, რასაც ეძებთ, და არც ის, საიდან მიდიხართ, არსად იგზავნება, ხოლო კავშირის გარეშე ყველაფერი შენახული მონაცემებით მუშაობს.',
       ],
     },
     {
@@ -85,7 +85,7 @@ const copy = {
       body: [
         "Batumi's 28 bus routes, 578 stops, and every bus currently running, refreshed every 5 seconds.",
         'Tap a stop for its timetable and for how long the next bus looks like taking.',
-        'Directions plans a trip from the timetable — with changes of bus, and the walk to the stop and from it. Finding the address and planning the trip both happen on your device: neither what you search for nor where you are setting off from is sent anywhere, and with no signal it works from the saved data.',
+        'Directions finds the buses by where the lines go — with changes of bus, and the walk to the stop and from it. Travel times are estimated from distance, and when the next bus comes is read from where it is right now. Finding the address and planning the trip both happen on your device: neither what you search for nor where you are setting off from is sent anywhere, and with no signal it works from the saved data.',
       ],
     },
     {

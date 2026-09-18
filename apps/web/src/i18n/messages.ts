@@ -178,6 +178,7 @@ export const messages = {
   chooseOnMap: { ru: 'Выбрать на карте', ka: 'რუკაზე არჩევა', en: 'Choose on the map' },
   chooseOnMapCancel: { ru: 'Не выбирать на карте', ka: 'რუკაზე არჩევის გაუქმება', en: 'Stop choosing on the map' },
   placesFailed: { ru: 'Не удалось загрузить адреса', ka: 'მისამართები ვერ ჩაიტვირთა', en: 'Could not load the addresses' },
+  clearHistory: { ru: 'Очистить историю', ka: 'ისტორიის გასუფთავება', en: 'Clear history' },
   pointOnMap: { ru: 'Точка на карте', ka: 'წერტილი რუკაზე', en: 'Point on the map' },
   pickFromHint: {
     ru: 'Нажмите на карту, чтобы выбрать, откуда ехать',
@@ -191,9 +192,13 @@ export const messages = {
   },
   swapEnds: { ru: 'Поменять местами', ka: 'ადგილების გაცვლა', en: 'Swap start and destination' },
   walk: { ru: 'Пешком', ka: 'ფეხით', en: 'Walk' },
-  tomorrow: { ru: 'завтра', ka: 'ხვალ', en: 'tomorrow' },
-  alsoAt: { ru: 'Ещё в', ka: 'ასევე', en: 'Also at' },
   direct: { ru: 'Без пересадок', ka: 'გადაჯდომის გარეშე', en: 'Direct' },
+  or: { ru: 'или', ka: 'ან', en: 'or' },
+  // An option whose first line shows no bus coming. Said, because at night it
+  // is the thing worth knowing — and said as what we see, not as "no service".
+  notSeenNow: { ru: 'Сейчас не видно', ka: 'ახლა არ ჩანს', en: 'None in sight' },
+  // The feed splits every route at a terminal the bus drives straight through.
+  staysOn: { ru: 'Не выходите на конечной', ka: 'ბოლო გაჩერებაზე ნუ ჩამოხვალთ', en: 'Stay on through the terminus' },
   hoursShort: { ru: 'ч', ka: 'სთ', en: 'h' },
   noJourney: { ru: 'Не нашли, как добраться', ka: 'გზა ვერ მოიძებნა', en: 'No way there found' },
   noJourneyDetail: {
@@ -216,20 +221,10 @@ export const messages = {
     ka: 'საჭიროა თქვენი მდებარეობა — დაუშვით წვდომა ან აირჩიეთ წერტილი რუკაზე',
     en: 'This needs your location — allow access, or choose a point on the map',
   },
-  // Lines that publish no timetable: how long the ride takes is known, when a
-  // bus comes is not, and the row has to say both.
-  untimedTitle: { ru: 'Линии без расписания', ka: 'ხაზები განრიგის გარეშე', en: 'Lines with no timetable' },
-  riding: { ru: 'в пути', ka: 'გზაში', en: 'on board' },
-  plusWait: { ru: '+ ожидание', ka: '+ ლოდინი', en: '+ the wait' },
   planNote: {
-    ru: 'Время — по расписанию. Пешие отрезки — оценка: расстояние по прямой с поправкой на улицы.',
-    ka: 'დრო — განრიგით. ფეხით სავალი მონაკვეთები შეფასებაა: პირდაპირი მანძილი ქუჩების გათვალისწინებით.',
-    en: 'Times are from the timetable. Walks are estimates: the straight line, allowing for streets.',
-  },
-  estimatedTimesNote: {
-    ru: '≈ — время рассчитано нами: опубликованное расписание здесь не сходится с расстоянием.',
-    ka: '≈ — დრო ჩვენ მიერაა გამოთვლილი: გამოქვეყნებული განრიგი აქ მანძილს არ შეესაბამება.',
-    en: '≈ — our estimate: the published timetable here does not fit the distance.',
+    ru: 'Время в пути — оценка по расстоянию, без ожидания автобуса. Пешие отрезки — по прямой с поправкой на улицы.',
+    ka: 'მგზავრობის დრო მანძილით არის შეფასებული, ავტობუსის ლოდინის გარეშე. ფეხით სავალი მონაკვეთები — პირდაპირი მანძილი ქუჩების გათვალისწინებით.',
+    en: 'Travel times are estimated from distance and leave out the wait for the bus. Walks are the straight line, allowing for streets.',
   },
   nextLive: { ru: 'Ближайший сейчас', ka: 'უახლოესი ახლა', en: 'Next, live' },
   backToOptions: { ru: 'К вариантам', ka: 'ვარიანტებზე', en: 'Back to the options' },

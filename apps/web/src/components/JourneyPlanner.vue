@@ -118,6 +118,12 @@
       </li>
     </ul>
 
+    <!-- Under the recents, and only while they are what is listed. Pressing it
+         must not blur the field, or the list it just emptied closes too. -->
+    <div v-if="showsRecents" :class="$style.forget" @mousedown.prevent>
+      <Button variant="ghost" size="sm" @click="places.forget()">{{ locale.t("clearHistory") }}</Button>
+    </div>
+
     <p v-if="status === 'loading'" :class="$style.status">
       <Spinner :size="14" />
       {{ locale.t("loading") }}
@@ -320,6 +326,8 @@ const status = computed<"loading" | "failed" | "empty" | null>(() => {
 });
 
 watch(options, () => (highlighted.value = 0));
+
+const showsRecents = computed(() => !!activeField.value && activeQuery.value.length < 2 && places.recent.length > 0);
 
 const listLabel = computed(() => (activeField.value === "to" ? locale.t("toLabel") : locale.t("fromLabel")));
 const expanded = (field: PlaceField) => activeField.value === field && options.value.length > 0;
@@ -551,6 +559,11 @@ const clear = () => {
   color: design.color(muted-foreground);
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
+}
+
+.forget {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .status {

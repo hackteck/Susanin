@@ -2,18 +2,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { metresBetween } from './geo.ts'
 import { sliceLine } from './geometry.ts'
-import { clockLabel, minutesInBatumi } from './time.ts'
-
-test("the planner's clock is Batumi's, whatever the device's time zone", () => {
-  // 20:00 UTC is midnight in Batumi — UTC+4, no daylight saving.
-  assert.equal(minutesInBatumi(new Date('2026-09-18T20:00:00Z')), 0)
-  assert.equal(minutesInBatumi(new Date('2026-09-18T03:30:30Z')), 7 * 60 + 30.5)
-})
-
-test('clock labels wrap past midnight rather than printing 24:10', () => {
-  assert.equal(clockLabel(7 * 60 + 5.9), '07:05')
-  assert.equal(clockLabel(1440 + 70), '01:10')
-})
 
 test('a slice of line runs from one distance to the other and no further', () => {
   // Three points due east, roughly 830 m apart.

@@ -162,6 +162,7 @@
               v-else-if="planner.result"
               :result="planner.result"
               :selected-key="journey?.key ?? null"
+              :live="liveByKey"
               @select="planner.selectJourney"
             />
           </template>
@@ -203,14 +204,14 @@ import TransitMap, {
 import { cacheArchives, loadManifest, openArchive, type ArchiveSource } from "@/components/map/archives";
 import ArrivalBoard from "@/components/ArrivalBoard.vue";
 import JourneyOptions from "@/components/JourneyOptions.vue";
-import JourneySteps, { type JourneyLive } from "@/components/JourneySteps.vue";
-import { useArrivals } from "@/composables/useArrivals";
+import JourneySteps from "@/components/JourneySteps.vue";
+import { nextBus, useArrivals, useArrivalsAt, type NextBus } from "@/composables/useArrivals";
 import { useJourneyFormat } from "@/composables/useJourneyFormat";
 import { useNow } from "@/composables/useNow";
 import { useTheme } from "@/composables/useTheme";
 import { metresBetween } from "@/planner/geo";
 import { sliceLine } from "@/planner/geometry";
-import type { RideLeg } from "@/planner/plan";
+import type { Journey, RideLeg } from "@/planner/plan";
 import { useLocale } from "@/stores/locale";
 import { usePlanner, type PlaceField } from "@/stores/planner";
 import { useProximity, STALE_AFTER_MS } from "@/stores/proximity";
@@ -516,7 +517,7 @@ const planState = computed<PlanState>(() => {
   if (planner.timetableFailed && !planner.timetable) return "failed";
   const result = planner.result;
   if (!result) return "loading";
-  if (result.noStopsNear || (!result.journeys.length && !result.untimed.length)) return "nothing";
+  if (result.noStopsNear || !result.journeys.length) return "nothing";
   return "ready";
 });
 
@@ -549,20 +550,29 @@ watch(
   { immediate: true },
 );
 
-// The first bus's live position, while the reader is looking at the steps.
-// Only the first: it is the one someone decides whether to run for.
-const liveStopId = computed(() =>
-  mode.value === "plan" && planner.showSteps ? (rides.value[0]?.fromStopId ?? null) : null,
+// Every option's first bus, as the live feed sees it. A plan is timed by
+// distance, not by the timetable, so when the next bus comes is the feed's to
+// say — beside each option, and in the steps of the one chosen. One poll over
+// the few stops the options get on at; only the first bus, because it is the
+// one someone decides whether to run for, and the rest depend on it anyway.
+const firstRide = (trip: Journey) => trip.legs.find((leg): leg is RideLeg => leg.kind === "ride");
+const boardingStops = computed(() =>
+  mode.value === "plan"
+    ? (planner.result?.journeys ?? []).map(firstRide).flatMap((leg) => (leg ? [leg.fromStopId] : []))
+    : [],
 );
-const { arrivals: firstStopArrivals } = useArrivals(liveStopId);
-const live = computed<JourneyLive | null>(() => {
-  const first = rides.value[0];
-  if (!first) return null;
-  const arrival = firstStopArrivals.value.find(
-    (candidate) => candidate.routeId === first.routeId && candidate.direction === first.direction,
-  );
-  return arrival?.estimate ? { arrivesAt: arrival.estimate.arrivesAt, confidence: arrival.estimate.confidence } : null;
+const { boards } = useArrivalsAt(boardingStops);
+const liveByKey = computed(() => {
+  const found: Record<string, NextBus | null> = {};
+  for (const trip of planner.result?.journeys ?? []) {
+    const first = firstRide(trip);
+    const board = first ? boards.value.get(first.fromStopId) : undefined;
+    if (!first || !board) continue;
+    found[trip.key] = nextBus(board, [{ routeId: first.routeId, direction: first.direction }, ...(first.also ?? [])]);
+  }
+  return found;
 });
+const live = computed(() => (journey.value ? (liveByKey.value[journey.value.key] ?? null) : null));
 
 const stopPoint = (id: string | null): [number, number] | null => {
   const stop = id ? transit.stopById.get(id) : undefined;
@@ -577,14 +587,21 @@ const ridePoints = (leg: RideLeg): [number, number][] => {
   const detail = transit.routeDetails.get(leg.routeId);
   const direction = detail?.directions.find((candidate) => candidate.direction === leg.direction);
   const along = direction?.along;
-  if (
-    detail &&
-    along &&
-    direction.stopIds[leg.board] === leg.fromStopId &&
-    direction.stopIds[leg.alight] === leg.toStopId
-  ) {
-    const cut = sliceLine(detail.shape, along[leg.board]!, along[leg.alight]!);
-    if (cut.length > 1) return cut;
+  if (detail && along && direction.stopIds[leg.board] === leg.fromStopId) {
+    if (direction.stopIds[leg.alight] === leg.toStopId) {
+      const cut = sliceLine(detail.shape, along[leg.board]!, along[leg.alight]!);
+      if (cut.length > 1) return cut;
+    }
+    // On through the terminal: to the end of this direction, then along the
+    // other one to the stop. Two cuts of the same round-trip shape.
+    const other = detail.directions.find((candidate) => candidate.direction !== leg.direction);
+    const at = other?.stopIds.indexOf(leg.toStopId) ?? -1;
+    if (other?.along && at >= 0) {
+      const before = sliceLine(detail.shape, along[leg.board]!, along.at(-1)!);
+      const after = sliceLine(detail.shape, other.along[0]!, other.along[at]!);
+      const joined = [...(before.length > 1 ? before : []), ...after];
+      if (joined.length > 1) return joined;
+    }
   }
   return leg.stopIds.map(stopPoint).filter((point) => point !== null);
 };

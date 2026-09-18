@@ -179,8 +179,8 @@ against the matched shapes, though, the intermediate times are not all real:
 route 8 inbound runs 38 stops and 13.8 km in **three minutes**, route 12
 outbound 34 stops in eight, and route 6, 10A and others have four-minute
 stretches at 108–186 km/h. Those are repaired when the network is built and the
-repair is written back into the stop schedules, so the stop page, the arrival
-board and the journey planner give one time for one bus:
+repair is written back into the stop schedules, so the stop page and the arrival
+board give one time for one bus:
 
 - a pattern averaging over **45 km/h** end to end (the same ceiling arrivals.ts
   clamps a measured speed to) has no usable intermediate times, and they are
@@ -201,8 +201,8 @@ on purpose to watch it go red.
 
 Seven route-directions publish **no times at all** — 22, 26, 33, 35 and 37 both
 ways, and 7 and 7A inbound — though their buses run (route 33 had one live at
-midday). They still get distance-derived ride times, so the planner can offer
-them, but apart from the timed options and labelled as having no timetable.
+midday). The journey planner does not read departures at all (see *Planning a
+trip*), so to it these are lines like any other.
 
 **What is missing, and what the app must therefore not promise:**
 
@@ -584,14 +584,15 @@ The frontend never sees an upstream shape. `GET /api/*`:
     GET /api/stops                       all stops (optionally ?bbox=s,w,n,e)
     GET /api/stops/:id                   stop + per-route scheduled departures
     GET /api/stops/:id/arrivals          next scheduled times + live estimates
-    GET /api/timetable                   every direction as trips, for the planner
+    GET /api/timetable                   every direction's stop chain, as trips
     GET /api/vehicles?routes=a,b         live vehicles, heading derived
 
 Cache TTLs: the dataset 10 minutes (upstream says 600), vehicles 4 seconds
 (upstream says 4). Both are single-flighted. `/api/timetable` is 80 KB of JSON,
 9.5 KB gzipped: a pattern is its stop ids, one set of offsets and its first
-stop's departures, and a route detail's directions carry each stop's `along` so
-a client can cut the line between two of them.
+stop's departures — the journey planner reads only the stop chains — and a
+route detail's directions carry each stop's `along` so a client can cut the line
+between two of them.
 
 ## Installable, and offline
 
@@ -780,13 +781,24 @@ sidebar does.
   UI may type what the sign says in Georgian. A house letter matches whichever
   keyboard typed it (12ა, 12а, 12a); a number inside a street's name («26 Мая») is
   not taken for a house; «ул.», «пр-т», "st" and «ქ.» count when they match and
-  are forgiven when they do not. Two second chances, each for a failure found on
-  a real query: a word is also compared by its Latin sound, because the hotels
-  are named in Latin script and a Russian reader types «Хилтон»; and a place's OSM
-  type carries its own words in three languages, because «аптека» otherwise
-  finds none of the 156 pharmacies, which are called PSP and Aversi. A match on
-  the type ranks after a match on the name — «автовокзал» is one terminal's name
+  are forgiven when they do not. Three second chances, each for a failure found
+  on a real query: a word is also compared by its Latin sound, because the hotels
+  are named in Latin script and a Russian reader types «Хилтон» — with г, х and h
+  one sound, since Russian writes a foreign h either way and «Горизонт» has to
+  find the towers called "Horizon"; a word of five letters or more survives one
+  slip; and a place's OSM type carries its own words in three languages, because
+  «аптека» otherwise finds none of the 156 pharmacies, which are called PSP and
+  Aversi. Each ranks after a match as typed — «автовокзал» is one terminal's name
   and eight minibus stands' type.
+- **A name OSM has not translated is translated when every word of it is
+  known**, and sounded out otherwise. 244 place names have no Russian, and the
+  loanwords among them are the worst of it: «ჰორიზონტი», sounded out, is
+  «Хоризонти», and every Russian reader knows it as «Горизонт». The build keeps
+  a short dictionary of the words that recur in those names — nouns, loanwords,
+  and the few phrases whose words agree in Russian and so cannot be put together
+  word by word («Грузинская кухня»). Word by word through a language with cases is
+  how «Новый аптека» happens, which is why a name with an unknown word is left to
+  the old fallback rather than half translated.
 - **Ranking**: a village or town first — Gonio is somewhere people go — then a
   street before its own lanes and dead ends, then a place someone has written a
   Wikipedia article about, then the fortieth café, and Batumi's districts last,
@@ -801,7 +813,8 @@ sidebar does.
   selection reopened tomorrow is a question nobody asked. They are stored with
   their names in all three locales, so a rebuilt table does not orphan them.
   Choosing "my location" for one end when the other already is moves it there,
-  rather than planning a trip from me to me.
+  rather than planning a trip from me to me. «Очистить историю» under the list wipes them: a
+  history is the reader's to keep or to clear.
 - **The table loads when a field is first focused**, not with the page — 190 KB
   is not for a visit that only glances at the map — and the service worker keeps
   it from then on (see *Installable, and offline*).
@@ -871,57 +884,80 @@ sidebar does.
 
 **It runs in the browser, and that is two decisions, not one.** The fix never
 leaves the device — the API client takes no coordinates, and a planner on the
-server would have to — and a plan works with no signal once the timetable has
-been fetched, which is the offline story this app exists for. The cost is 9.5 KB
-of gzipped timetable on first use, fetched when a field is first focused rather
+server would have to — and a plan works with no signal once the route network
+has been fetched, which is the offline story this app exists for. The network is
+`/api/timetable`, 9.5 KB gzipped, fetched when a field is first focused rather
 than on every visit. The code is `apps/web/src/planner/` — plain TypeScript with
 no Vue and no DOM, so `node --test` runs it directly.
 
-- **RAPTOR** (Delling, Pajor, Werneck 2012) over trips rebuilt from
-  `/api/timetable`: round k is the earliest arrival with at most k buses, which
-  makes the rounds the transfer counts. Up to three buses. One timetable serves
-  every day, so each pattern carries yesterday's, today's and tomorrow's
-  departures: a search at 23:40 finds the 06:30, and one at 00:05 can still catch
-  a bus that left before midnight. 2–9 ms a plan on the real network.
-- **Which stop a bus is boarded at is chosen, not inherited.** Plain RAPTOR
-  boards a trip where the scan first meets it — measured, that sent a reader on
-  a 14-minute walk to board line 10 one stop before a pole seven minutes away
-  that the same bus reached a minute later. The first bus is boarded where the
-  reader can leave home latest; a change, where the wait at the kerb is shortest.
+**Plans are made from where the lines go, not from when the timetable says
+they leave.** The first planner was RAPTOR over the published departures, and
+it gave answers no rider would recognise: seven directions publish no times
+though their buses run, so they could only ever be offered apart — asked for
+School №13 to Horizon 1, it never offered line 7 or line 10, the two a rider
+would name. Buses come often enough that the question at a kerb is which line
+from which pole, and the minute the next one comes is something the live feed
+knows and a timetable only claims. So:
+
+- **A line is its chain of stops.** `/api/timetable` lists every direction's
+  chain; its departures and offsets are not read. A ride is timed by distance:
+  straight stop-to-stop hops × **1.08** (measured: the median ratio of the
+  distance along the matched shape to the hop sum, across 53 directions) at
+  **19.6 km/h**, the network's median end-to-end speed. Every duration shown is
+  therefore an estimate, carries a `≈`, and leaves out the wait — the note under
+  the options says so.
+- **A bus drives on through its terminal.** The feed splits each route in two at
+  a stop where the bus does not stop being the same bus, and read literally that
+  stranded riders: School №13 is the first stop of line 7's twelve-stop inbound
+  leg, and nothing on that leg meets another line. So each direction also runs on
+  into the other when the other starts within **600 m** of where it ends (the two
+  ends of a route sit 9–531 m apart across the network; line 7's loop closes over
+  426 m). Such a ride is boarded before the turn and left after it — anything
+  else is one of the directions on its own — and its step says «Не выходите на
+  конечной». Boarded *at* the terminal, it is headed for the other direction's
+  end, and says that.
+- **Options, one per sequence of lines:** the best direct ride on every line
+  that serves both ends; the best journey for every pair of lines with one change
+  between them, on foot up to 400 m; and three buses only when fewer will not do.
+  Ranked by time plus five minutes' wait for every bus, five more for a change,
+  and walking counted at 1.5×; nothing over 1.5× the best, except that the best
+  bus option always survives beside a faster walk. 6 ms a plan at the median,
+  10 at p90, over 40 random pairs on the real network — measured after the first
+  version spelled out all five thousand candidate pairs before discarding them,
+  and took 70.
+- **Estimates this rough decide nothing by a hair.** An option is cut only when
+  another is *clearly* better: two minutes quicker, a bus fewer, or two minutes
+  less walking. The first version cut 7A-then-10 because 7A-then-3 was six
+  seconds quicker by the arithmetic.
+- **Lines that make the same ride are one option** — on at the same pole, off at
+  the same pole, about as long: «10 / 10A», and the live feed says which comes
+  first.
+- **When the bus comes is the live feed's.** Every option shows its first bus's
+  arrival, from one poll over the few stops the options board at
+  (`useArrivalsAt`), and «Сейчас не видно» when the feed answered and shows none
+  coming — at night, the thing worth knowing. A stop whose board has not answered
+  shows nothing, because "cannot see" is not "none coming". The step list reads
+  the same numbers; the map shows only the trip's buses.
+- **Which stop a bus is boarded at is chosen**: the one that makes walk plus ride
+  cheapest, not the first stop of the line the scan meets.
 - **Walking is measured, not assumed.** 30 stop pairs from 150 m to 1.5 km,
   routed on foot over OpenStreetMap (FOSSGIS's OSRM), came out a median
   **1.25×** the straight line (quartiles 1.17 and 1.37) at the router's own
   **75 m a minute** (`planner/walking.ts`). Walks are drawn as dotted straight
   lines: "about this way, on foot", not a path we do not have.
-- **Slack:** a minute to be at the pole before the bus, three for a change of
-  bus — the bus being left is the late one, and a connection that only works if
-  it isn't is not one to send anybody to. Transfers walk up to 400 m straight.
 - **Reach:** stops within the same 1.2 km as Nearby, and the nearest three from
   up to 3 km only when there is none that close. Offered beside a stop that *was*
   close, a stop 2.6 km off turned a trip to Sarpi into a bus and a 44-minute walk.
-- **Options, like Google's:** everything two searches, the second starting just
-  after the first option leaves, and two more after that, can find — one per
-  stop it could get off at — then nothing another option beats on leaving,
-  arriving, changes and walking; one per sequence of lines; ranked by arrival
-  plus five minutes a change and walking counted at 1.5×; nothing over 1.5× the
-  best's cost, except that the best bus option always survives, so 23:30 offers
-  the 07:00 as well as the 40-minute walk that beats it. Walking alone is an
-  option when it is under an hour.
-- **Always from now.** Depart-at and arrive-by were offered and taken out: the
-  question at a kerb is how to get there from here, now, and a control nobody
-  changes is one everybody has to read past. The search is depart-only as a
-  result — `PlanQuery` has no mode.
-- **Lines with no timetable** are offered apart: a direct ride on one, with its
-  ride time and "+ the wait", when it could beat the best timed option.
-- **Live, where it helps:** the step list shows the first bus's line as the feed
-  sees it ("Ближайший сейчас: 13 мин" beside a scheduled 12:31 is the timetable
-  and the road disagreeing today), and the map shows only the trip's buses.
-- **Stable under a thumb:** a plan is redone every 30 s while shown,
-  the chosen option is tracked by its lines rather than its place in the list,
-  and "me" moves only when the fix moves 50 m — the map watches the position
-  every few seconds, and reshuffling the options for GPS jitter is worse than
-  an access walk 40 m out of date. The map fits the trip when it changes,
-  measured off the laid-out sheet, and not on the 30-second re-plan.
+  Walking alone is an option when it is under an hour.
+- **Always from now, and nothing to re-plan on a clock.** Depart-at and
+  arrive-by were offered and taken out — a control nobody changes is one
+  everybody has to read past — and with no departures in the plan there is no
+  half-minute re-plan either: a plan changes when an end does.
+- **Stable under a thumb:** the chosen option is tracked by its lines rather
+  than its place in the list, and "me" moves only when the fix moves 50 m — the
+  map watches the position every few seconds, and reshuffling the options for GPS
+  jitter is worse than an access walk 40 m out of date. The map fits the trip when
+  it changes, measured off the laid-out sheet.
 
 ## Sharing
 
@@ -1038,9 +1074,9 @@ default, and the frontend is same-origin with the API so no CORS entry is needed
   Node's built-in runner (`node --test`) in both workspaces — no framework, no
   config, no dependency, and it strips the TypeScript itself. Tests are
   `*.test.ts` beside the code they cover. The planner and the search are web
-  code but the same kind of code as the API's: whether a change of bus leaves
-  time to make it, or whether «Хилтон» finds the Hilton, is invisible in a
-  screenshot. So `apps/web/src/planner/` and `apps/web/src/places/` stay free of
+  code but the same kind of code as the API's: whether a bus that turns at its
+  terminal can be ridden through it, or whether «Хилтон» finds the Hilton, is
+  invisible in a screenshot. So `apps/web/src/planner/` and `apps/web/src/places/` stay free of
   Vue and the DOM, their relative imports carry `.ts` for Node, and `tsconfig.test.json`
   checks the tests with Node's types while the app's config excludes them.
   The UI stays manually verified in the browser over Chrome DevTools Protocol on

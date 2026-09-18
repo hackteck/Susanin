@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Stop, TimetablePattern } from '../api/types.ts'
-import { buildPlannerNetwork } from './network.ts'
-import { nearbyStops, planJourneys, type Journey, type RideLeg, type WalkLeg } from './plan.ts'
-import { BOARDING_SLACK, TRANSFER_SLACK, search, trace } from './raptor.ts'
-import { walkingMinutes } from './walking.ts'
+import type { Direction, Stop, TimetablePattern } from '../api/types.ts'
 import { metresBetween } from './geo.ts'
+import { BUS_METRES_PER_MINUTE, ROUTE_CIRCUITY, buildPlannerNetwork } from './network.ts'
+import { nearbyStops, planJourneys, type Journey, type RideLeg, type WalkLeg } from './plan.ts'
+import { walkingMinutes } from './walking.ts'
 
 /**
  * A made-up town small enough to check by hand. At 41.64°N a hundredth of a
  * degree is about 830 m east–west and 1.1 km north–south.
  *
- *   B runs north from beside A's last stop; A runs east.
- *   D is a slow direct line covering both A and B in one go.
- *   C publishes no timetable, off to the south where nothing else goes.
+ *   A runs east; B runs north from beside A's last stop.
+ *   C publishes no timetable at all — and is planned like any other line.
+ *   T turns at its terminal: its second direction starts 150 m from where the
+ *     first one ends, and the bus drives on round.
+ *   E and F make the same ride between the same two poles.
  */
 const stop = (id: string, lat: number, lon: number): Stop => ({
   id,
@@ -34,34 +35,41 @@ const stops = [
   stop('b1', 41.65, 41.6405),
   stop('b2', 41.66, 41.6405),
   stop('b3', 41.67, 41.6405),
-  stop('d0', 41.6395, 41.6005),
-  stop('d1', 41.655, 41.62),
-  stop('d2', 41.6705, 41.641),
   stop('c0', 41.6, 41.6),
   stop('c1', 41.6, 41.62),
   stop('c2', 41.6, 41.64),
+  stop('t0', 41.7, 41.6),
+  stop('t1', 41.7, 41.61),
+  stop('t2', 41.7, 41.62),
+  stop('t3', 41.7013, 41.62),
+  stop('t4', 41.72, 41.62),
+  stop('t5', 41.72, 41.6),
+  stop('e0', 41.56, 41.6),
+  stop('e1', 41.56, 41.61),
+  stop('e2', 41.56, 41.62),
+  stop('f1', 41.5605, 41.61),
 ]
 
-const every = (from: number, to: number, step: number) =>
-  Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, index) => from + index * step)
-
-const pattern = (routeId: string, stopIds: string[], offsets: number[], departures: number[]): TimetablePattern => ({
+const pattern = (routeId: string, direction: Direction, stopIds: string[], departures: number[] = [480]): TimetablePattern => ({
   routeId,
-  direction: 1,
+  direction,
   stopIds,
-  offsets,
+  // The planner reads neither of these: the chains are what it plans on.
+  offsets: stopIds.map((_, index) => index * 3),
   departures,
-  estimated: stopIds.map(() => !departures.length),
+  estimated: stopIds.map(() => false),
 })
 
 const timetable = [
-  // Every ten minutes, 07:00 to 21:00.
-  pattern('A', ['a0', 'a1', 'a2', 'a3', 'a4'], [0, 3, 6, 9, 12], every(420, 1260, 10)),
-  // Every fifteen minutes, 07:00 to 21:00.
-  pattern('B', ['b0', 'b1', 'b2', 'b3'], [0, 4, 8, 12], every(420, 1260, 15)),
-  // Once, at 08:30, and slower than changing — but not absurdly so.
-  pattern('D', ['d0', 'd1', 'd2'], [0, 15, 35], [510]),
-  pattern('C', ['c0', 'c1', 'c2'], [0, 5, 10], []),
+  pattern('A', 1, ['a0', 'a1', 'a2', 'a3', 'a4']),
+  // The same direction listed twice, as the API lists one per running-time pattern.
+  pattern('A', 1, ['a0', 'a1', 'a2', 'a3', 'a4'], [900]),
+  pattern('B', 1, ['b0', 'b1', 'b2', 'b3']),
+  pattern('C', 1, ['c0', 'c1', 'c2'], []),
+  pattern('T', 1, ['t0', 't1', 't2']),
+  pattern('T', 2, ['t3', 't4', 't5']),
+  pattern('E', 1, ['e0', 'e1', 'e2']),
+  pattern('F', 1, ['e0', 'f1', 'e2']),
 ]
 
 const network = buildPlannerNetwork(stops, timetable)
@@ -72,81 +80,140 @@ const near = (id: string) => {
   return { lat: found.lat + 0.0001, lon: found.lon + 0.0001 }
 }
 
-const plan = (from: string, to: string, at: number) => planJourneys(network, { from: near(from), to: near(to), at })
-
+const plan = (from: string, to: string) => planJourneys(network, { from: near(from), to: near(to) })
 const rides = (journey: Journey) => journey.legs.filter((leg): leg is RideLeg => leg.kind === 'ride')
+const transit = (journeys: Journey[]) => journeys.filter((journey) => journey.kind === 'transit')
 
-test('a direct ride takes the first bus it can actually make', () => {
-  const [best] = plan('a0', 'a3', 480).journeys
+test('a direct ride is offered, and timed by the distance the bus drives', () => {
+  const [best] = transit(plan('a0', 'a3').journeys)
 
   assert.ok(best)
-  assert.deepEqual(rides(best).map((leg) => leg.routeId), ['A'])
-  // The 08:00 is due the moment the search starts, and nobody can be at the
-  // pole with a minute to spare at the moment they start walking.
-  assert.equal(rides(best)[0]!.depart, 490)
-  assert.equal(rides(best)[0]!.arrive, 499)
+  const [ride] = rides(best)
+  assert.deepEqual([ride!.routeId, ride!.fromStopId, ride!.toStopId], ['A', 'a0', 'a3'])
+
+  const hops = [0, 1, 2].reduce((sum, at) => sum + metresBetween(stops[at]!, stops[at + 1]!), 0)
+  assert.ok(Math.abs(ride!.metres - hops * ROUTE_CIRCUITY) < 1e-6)
+  assert.ok(Math.abs(ride!.minutes - ride!.metres / BUS_METRES_PER_MINUTE) < 1e-9)
 })
 
-test('setting off is timed to the bus, not to the moment of asking', () => {
-  const [best] = plan('a0', 'a3', 480).journeys
-  const walk = best!.legs[0]!
+test('when a bus is scheduled plays no part — a line with no timetable is planned like any other', () => {
+  const [best] = transit(plan('c0', 'c2').journeys)
 
-  assert.equal(walk.kind, 'walk')
-  assert.ok(Math.abs(best!.depart - (490 - BOARDING_SLACK - walk.minutes)) < 1e-9)
+  assert.ok(best, 'no option on the line that publishes no departures')
+  assert.deepEqual(rides(best).map((leg) => leg.routeId), ['C'])
 })
 
-test('a change of bus leaves time to walk across and be there first', () => {
-  const [best] = plan('a0', 'b3', 480).journeys
-  const [first, second] = rides(best!)
+test('a change of bus is found where no one line goes all the way', () => {
+  const best = transit(plan('a0', 'b3').journeys).find((journey) => journey.rides === 2)
 
+  assert.ok(best)
+  const [first, second] = rides(best)
   assert.deepEqual([first!.routeId, second!.routeId], ['A', 'B'])
-  // A reaches a4 at 08:22; the B at 08:25 would need no walk and no slack.
-  assert.equal(first!.arrive, 502)
-  assert.equal(second!.depart, 510)
-
-  const transfer = best!.legs.find((leg): leg is WalkLeg => leg.kind === 'walk' && !!leg.fromStopId && !!leg.toStopId)
-  assert.ok(transfer, 'no walk between the two stops')
-  assert.ok(first!.arrive + transfer.minutes + TRANSFER_SLACK <= second!.depart)
+  const change = best.legs.find((leg): leg is WalkLeg => leg.kind === 'walk' && !!leg.fromStopId && !!leg.toStopId)
+  assert.ok(change, 'no walk between the two poles')
+  assert.deepEqual([change.fromStopId, change.toStopId], ['a4', 'b0'])
 })
 
-test('the legs of a journey follow one another in time', () => {
-  for (const journey of plan('a0', 'b3', 480).journeys) {
-    for (let index = 1; index < journey.legs.length; index++) {
-      const before = journey.legs[index - 1]!
-      const after = journey.legs[index]!
-      assert.ok(before.arrive <= after.depart + 1e-9, `${journey.key}: leg ${index} starts before the last one ends`)
+test('the legs of a journey join up, and a ride only goes forward', () => {
+  for (const journey of plan('a0', 'b3').journeys) {
+    for (const leg of rides(journey)) {
+      assert.ok(leg.board < leg.alight, `${journey.key}: rides backwards`)
+      assert.equal(leg.stopIds[0], leg.fromStopId)
+      assert.equal(leg.stopIds.at(-1), leg.toStopId)
     }
-    assert.equal(journey.depart, journey.legs[0]!.depart)
-    assert.equal(journey.arrive, journey.legs.at(-1)!.arrive)
+    const total = journey.legs.reduce((sum, leg) => sum + leg.minutes, 0)
+    assert.ok(Math.abs(total - journey.minutes) < 1e-9)
   }
 })
 
-test('a somewhat slower direct line is offered beside a faster change', () => {
-  const { journeys } = plan('a0', 'b3', 480)
-
-  assert.equal(journeys[0]!.key, 'A:1>B:1', 'the change is quicker by twenty minutes')
-  assert.ok(
-    journeys.some((journey) => journey.key === 'D:1'),
-    'the one-bus alternative is worth showing',
-  )
-})
-
 test('no two options ride the same lines', () => {
-  const { journeys } = plan('a0', 'b3', 480)
+  const { journeys } = plan('a0', 'b3')
   assert.equal(new Set(journeys.map((journey) => journey.key)).size, journeys.length)
 })
 
-test('after the last bus, the plan is for the first one tomorrow', () => {
-  const [best] = plan('a0', 'a3', 23 * 60 + 30).journeys.filter((journey) => journey.kind === 'transit')
+test('a bus that turns at its terminal can be ridden through it', () => {
+  // t1 is on the first direction and t4, two kilometres north, on the second:
+  // only the bus that turns at t2 and carries on joins them.
+  const [best] = transit(plan('t1', 't4').journeys)
+
+  assert.ok(best, 'the bus drives on round, and the plan does not know it')
+  const [ride] = rides(best)
+  assert.equal(best.rides, 1)
+  assert.deepEqual([ride!.routeId, ride!.fromStopId, ride!.toStopId], ['T', 't1', 't4'])
+  assert.equal(ride!.turnsAtStopId, 't2')
+  assert.equal(ride!.direction, 1, 'boarded on the direction it is on at that stop')
+  assert.equal(ride!.heading, 1)
+})
+
+test('a direction does not run on into one that starts somewhere else', () => {
+  // A ends at a4; its "other direction" does not exist, and B is another line.
+  assert.ok(network.patterns.every((pattern) => pattern.routeId !== 'A' || pattern.turnsAt === undefined))
+  assert.equal(network.patterns.filter((pattern) => pattern.routeId === 'A').length, 1, 'one direction listed twice is one line')
+})
+
+test('lines that make the same ride are one option with a choice of bus', () => {
+  const options = transit(plan('e0', 'e2').journeys)
+
+  assert.equal(options.length, 1, options.map((journey) => journey.key).join(' | '))
+  const [ride] = rides(options[0]!)
+  const lines = [ride!.routeId, ...(ride!.also ?? []).map((line) => line.routeId)].sort()
+  assert.deepEqual(lines, ['E', 'F'])
+})
+
+test('an option only a little slower is still offered', () => {
+  // Two lines side by side, one about a minute slower by the arithmetic.
+  const pair = buildPlannerNetwork(
+    [stop('p0', 41.64, 41.6), stop('p1', 41.64, 41.63), stop('q0', 41.6402, 41.6), stop('q1', 41.6402, 41.6305)],
+    [pattern('P', 1, ['p0', 'p1']), pattern('Q', 1, ['q0', 'q1'])],
+  )
+  const { journeys } = planJourneys(pair, { from: { lat: 41.6401, lon: 41.6 }, to: { lat: 41.6401, lon: 41.6302 } })
+  const lines = transit(journeys).map((journey) => rides(journey)[0]!.routeId).sort()
+
+  assert.deepEqual(lines, ['P', 'Q'], 'a second a minute slower by the arithmetic was cut')
+})
+
+test('an option far worse than the best is not offered at all', () => {
+  const slow = buildPlannerNetwork(
+    [...stops, stop('z0', 41.66, 41.6), stop('z1', 41.66, 41.7)],
+    [
+      ...timetable,
+      // From beside a0 out east for seven kilometres and back to beside a3.
+      pattern('Z', 1, ['a0', 'z0', 'z1', 'a3']),
+    ],
+  )
+  const { journeys } = planJourneys(slow, { from: near('a0'), to: near('a3') })
+
+  assert.ok(!journeys.some((journey) => rides(journey).some((leg) => leg.routeId === 'Z')))
+})
+
+test('a bus is boarded where the walk to it is shortest, not where the line begins', () => {
+  // The start is beside a2; a0 is 1.6 km back up the same line.
+  const [best] = transit(plan('a2', 'a4').journeys)
+  assert.equal(rides(best!)[0]!.fromStopId, 'a2')
+})
+
+test('three buses when fewer will not do', () => {
+  const chain = buildPlannerNetwork(
+    [
+      stop('x0', 41.64, 41.6),
+      stop('x1', 41.64, 41.62),
+      stop('y0', 41.6405, 41.6205),
+      stop('y1', 41.66, 41.6205),
+      stop('w0', 41.6605, 41.621),
+      stop('w1', 41.66, 41.65),
+    ],
+    [pattern('X', 1, ['x0', 'x1']), pattern('Y', 1, ['y0', 'y1']), pattern('W', 1, ['w0', 'w1'])],
+  )
+  const [best] = transit(planJourneys(chain, { from: { lat: 41.6401, lon: 41.6 }, to: { lat: 41.6601, lon: 41.65 } }).journeys)
 
   assert.ok(best)
-  assert.equal(rides(best)[0]!.depart, 1440 + 420)
+  assert.deepEqual(rides(best).map((leg) => leg.routeId), ['X', 'Y', 'W'])
 })
 
 test('a destination a few steps away is a walk, and nothing else', () => {
   const from = near('a0')
   const to = { lat: from.lat + 0.001, lon: from.lon }
-  const { journeys } = planJourneys(network, { from, to, at: 480 })
+  const { journeys } = planJourneys(network, { from, to })
 
   assert.deepEqual(
     journeys.map((journey) => journey.kind),
@@ -155,20 +222,10 @@ test('a destination a few steps away is a walk, and nothing else', () => {
 })
 
 test('walking is offered when it is a real alternative', () => {
-  const { journeys } = plan('a0', 'a1', 480)
+  const { journeys } = plan('a0', 'a1')
 
   assert.ok(journeys.some((journey) => journey.kind === 'walk'))
   assert.ok(journeys.some((journey) => journey.kind === 'transit'))
-})
-
-test('a line with no timetable is offered apart, with a ride time and no departure', () => {
-  const result = plan('c0', 'c2', 480)
-
-  assert.equal(result.journeys.filter((journey) => journey.kind === 'transit').length, 0)
-  assert.equal(result.untimed.length, 1)
-  assert.equal(result.untimed[0]!.routeId, 'C')
-  assert.equal(result.untimed[0]!.ride.minutes, 10)
-  assert.ok(result.untimed[0]!.ride.estimated)
 })
 
 test('somewhere with no stop close by still gets its nearest few', () => {
@@ -181,59 +238,8 @@ test('somewhere with no stop close by still gets its nearest few', () => {
 })
 
 test('an end with no stop within reach is named, not silently empty', () => {
-  const result = planJourneys(network, { from: near('a0'), to: { lat: 41.9, lon: 41.9 }, at: 480 })
+  const result = planJourneys(network, { from: near('a0'), to: { lat: 41.9, lon: 41.9 } })
 
   assert.equal(result.noStopsNear, 'to')
   assert.deepEqual(result.journeys, [])
-})
-
-test('an option far worse than the best is not offered at all', () => {
-  const slow = buildPlannerNetwork(stops, [
-    ...timetable.filter((entry) => entry.routeId !== 'D'),
-    // Ninety minutes for what A and B do in forty.
-    pattern('D', ['d0', 'd1', 'd2'], [0, 30, 90], [510]),
-  ])
-  const { journeys } = planJourneys(slow, { from: near('a0'), to: near('b3'), at: 480 })
-
-  assert.ok(!journeys.some((journey) => journey.key === 'D:1'))
-})
-
-test('standing at the pole as the bus is due is not catching it', () => {
-  // No walk at all, so only the boarding slack stands between 08:00 and 08:10.
-  const at = stops.find((candidate) => candidate.id === 'a0')!
-  const { journeys } = planJourneys(network, { from: at, to: near('a3'), at: 480 })
-
-  assert.equal(rides(journeys.find((journey) => journey.kind === 'transit')!)[0]!.depart, 490)
-})
-
-test('a connection two minutes after arriving is not one to plan on', () => {
-  // P reaches the shared stop at 08:20; Q leaves it at 08:22 and again at 08:32.
-  const tight = buildPlannerNetwork(
-    [stop('p0', 41.64, 41.6), stop('x', 41.64, 41.62), stop('q1', 41.66, 41.62)],
-    [pattern('P', ['p0', 'x'], [0, 20], [480]), pattern('Q', ['x', 'q1'], [0, 10], [502, 512])],
-  )
-  const [best] = planJourneys(tight, {
-    from: { lat: 41.64, lon: 41.6 },
-    to: { lat: 41.66, lon: 41.62 },
-    at: 470,
-  }).journeys.filter((journey) => journey.kind === 'transit')
-
-  assert.deepEqual(rides(best!).map((leg) => leg.depart), [480, 512])
-})
-
-test('one search boards a bus where the walk to it is shortest, not where the scan met it', () => {
-  // The origin is beside p1; p0 is 400 m back up the line and the same bus is
-  // still catchable there. Asked of a single search, not of a whole plan: the
-  // later searches a plan runs can stumble on the better stop by luck, and did
-  // here while the real network went on sending people the long way round.
-  const line = buildPlannerNetwork(
-    [stop('p0', 41.64, 41.6), stop('p1', 41.64, 41.605), stop('p2', 41.64, 41.65)],
-    [pattern('P', ['p0', 'p1', 'p2'], [0, 2, 20], [480])],
-  )
-  const access = nearbyStops(line, { lat: 41.6401, lon: 41.6049 })
-  const labels = search(line, access, 470, 1)
-  const legs = trace(line, labels, 1, line.index.get('p2')!)
-  const ride = legs?.find((leg) => leg.kind === 'ride')
-
-  assert.equal(ride?.kind === 'ride' ? ride.board : -1, 1)
 })

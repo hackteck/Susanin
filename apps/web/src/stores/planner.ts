@@ -5,7 +5,6 @@ import type { TimetablePattern } from '@/api/types'
 import { metresBetween, type LatLon } from '@/planner/geo'
 import { buildPlannerNetwork } from '@/planner/network'
 import { planJourneys, type Journey, type PlanQuery, type PlanResult } from '@/planner/plan'
-import { minutesInBatumi } from '@/planner/time'
 import type { FoundPlace } from '@/places/search'
 import { useProximity } from '@/stores/proximity'
 import { useTransit } from '@/stores/transit'
@@ -21,11 +20,8 @@ export type Place =
   | { kind: 'point'; lat: number; lon: number }
 export type PlaceField = 'from' | 'to'
 
-/**
- * How often a plan is redone. The options change as buses leave, and a plan
- * made ten minutes ago recommends a bus that has gone.
- */
-const REPLAN_MS = 30_000
+/** A fix older than this is refreshed, quietly, when "my location" is chosen. */
+const FIX_FRESH_MS = 30_000
 
 /**
  * A fix moving by less than this does not re-plan. The map watches the position
@@ -115,35 +111,11 @@ export const usePlanner = defineStore('planner', () => {
     () => active.value && (from.value?.kind === 'me' || to.value?.kind === 'me') && !meAnchor.value,
   )
 
-  const clock = ref(Date.now())
-  let timer: number | undefined
-  const tick = () => {
-    clock.value = Date.now()
-  }
-
-  // Only while there is a plan to keep current. A store lives as long as the
-  // app, and a timer that outlived the question would be a battery tax on every
-  // page for nothing.
-  watch(
-    active,
-    (on) => {
-      window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', tick)
-      if (!on) return
-      tick()
-      timer = window.setInterval(tick, REPLAN_MS)
-      document.addEventListener('visibilitychange', tick)
-    },
-    { immediate: true },
-  )
-
-  // Always from now. A departure or arrival time was offered and taken out: the
-  // question at a kerb is "how do I get there from here, now", and a control
-  // nobody changes is a control everybody has to read past.
+  // A plan is where the lines go, not when the timetable says they leave, so it
+  // has no clock to keep up with: it changes when an end does, and when the bus
+  // comes is the live feed's to say beside it.
   const query = computed<PlanQuery | null>(() =>
-    fromPoint.value && toPoint.value
-      ? { from: fromPoint.value, to: toPoint.value, at: minutesInBatumi(clock.value) }
-      : null,
+    fromPoint.value && toPoint.value ? { from: fromPoint.value, to: toPoint.value } : null,
   )
 
   const result = computed<PlanResult | null>(() =>
@@ -164,7 +136,7 @@ export const usePlanner = defineStore('planner', () => {
   const ensureFix = () => {
     // The reader chose "my location", which is the press that is allowed to ask.
     if (!proximity.fix) proximity.locate()
-    else if (Date.now() - proximity.fix.at > REPLAN_MS) proximity.locate({ silent: true })
+    else if (Date.now() - proximity.fix.at > FIX_FRESH_MS) proximity.locate({ silent: true })
   }
 
   const setPlace = (field: PlaceField, place: Place | null) => {

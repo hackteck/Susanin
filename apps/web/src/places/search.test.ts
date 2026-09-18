@@ -68,6 +68,25 @@ test('a Latin name is found by its Russian sound', () => {
   assert.match(first('радиссон')?.name.en ?? '', /Radisson/)
 })
 
+test('Russian writes a foreign h as г, and a search does too', () => {
+  const names = search('горизонт').map((place) => place.name.en)
+  assert.ok(names.includes('Horizon 1'), names.join(' | '))
+})
+
+test('a slip of one letter still finds the house', () => {
+  assert.equal(first('Горгиладце 45')?.name.ru, 'улица Зураба Горгиладзе, 45')
+  // …but not in a word so short that one letter is most of it: «гани» is not Gonio.
+  assert.ok(!search('гани').some((place) => place.name.en === 'Gonio'))
+  assert.ok(search('гонио').some((place) => place.name.en === 'Gonio'))
+})
+
+test('a loanword is translated, not sounded out', () => {
+  // «ჰორიზონტი», sounded out, is «Хоризонти»; every Russian reader knows it as «Горизонт».
+  const horizonti = index.places.find((place) => place.name.ka === 'ჰორიზონტი')
+  assert.equal(horizonti?.name.ru, 'Горизонт')
+  assert.equal(horizonti?.name.en, 'Horizon')
+})
+
 test('a kind of place is found by what it is, and a place named so comes first', () => {
   const pharmacies = search('аптека')
   assert.ok(pharmacies.length >= 5)

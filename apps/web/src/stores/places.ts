@@ -80,6 +80,16 @@ export const usePlaces = defineStore('places', () => {
     }
   }
 
+  /** All of them: a history is the reader's to keep or wipe. */
+  const forget = () => {
+    recent.value = []
+    try {
+      localStorage.removeItem(RECENT_KEY)
+    } catch {
+      // Storage refused: the list is empty for this visit either way.
+    }
+  }
+
   const search = (query: string, near?: LatLon | null) =>
     index.value ? searchPlaces(index.value, query, { near }) : []
 
@@ -95,5 +105,5 @@ export const usePlaces = defineStore('places', () => {
     return named.get(key) ?? null
   }
 
-  return { ready: computed(() => !!index.value), failed, load, recent, remember, search, at }
+  return { ready: computed(() => !!index.value), failed, load, recent, remember, forget, search, at }
 })

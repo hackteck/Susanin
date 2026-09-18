@@ -1,6 +1,6 @@
 import { computed } from 'vue'
+import type { NextBus } from '@/composables/useArrivals'
 import type { WalkLeg } from '@/planner/plan'
-import { clockLabel, isTomorrow } from '@/planner/time'
 import { useLocale } from '@/stores/locale'
 import { usePlaces } from '@/stores/places'
 import type { Place } from '@/stores/planner'
@@ -13,8 +13,11 @@ import { useTransit } from '@/stores/transit'
  */
 export const wholeMinutes = (minutes: number) => Math.max(1, Math.ceil(minutes - 1e-9))
 
+/** Under this a bus is at the kerb, as on the arrival board. */
+const DUE_SECONDS = 45
+
 /**
- * How a planned trip reads: its times, its durations, its walks. One place for
+ * How a planned trip reads: its durations, its walks, its next bus. One place for
  * it because the options list and the step view say the same things about the
  * same journey, and "37 мин" in one beside "36 мин" in the other would be the
  * kind of disagreement nobody trusts a planner after.
@@ -47,21 +50,17 @@ export function useJourneyFormat() {
     return rest ? `${hours} ${rest} ${locale.t('minutesShort')}` : hours
   }
 
-  /** A clock time, saying so when it is tomorrow's. */
-  const time = (minutes: number) =>
-    isTomorrow(minutes) ? `${locale.t('tomorrow')} ${clockLabel(minutes)}` : clockLabel(minutes)
-
-  /** A departure is floored and an arrival rounded up, so neither promises a minute it has not got. */
-  const departTime = (minutes: number) => time(Math.floor(minutes + 1e-9))
-  const arriveTime = (minutes: number) => time(Math.ceil(minutes - 1e-9))
-
   /**
-   * How long from one to the other, counted between the two times as printed.
-   * Measured from the unrounded ones it read "12:20 – 12:50, 29 мин", which is
-   * arithmetic a reader does in their head and then stops trusting us.
+   * The next bus as the arrival board says it: a word once it is at the kerb,
+   * the ≈ while it is barely moving, and nothing once it has been and gone.
    */
-  const span = (depart: number, arrive: number) =>
-    duration(Math.ceil(arrive - 1e-9) - Math.floor(depart + 1e-9))
+  const countdown = (bus: Pick<NextBus, 'arrivesAt' | 'confidence'>, now: number) => {
+    const seconds = (Date.parse(bus.arrivesAt) - now) / 1000
+    if (seconds < -90) return ''
+    if (seconds <= DUE_SECONDS) return locale.t('approaching').toLowerCase()
+    const soft = bus.confidence === 'slow' ? '≈' : ''
+    return `${soft}${Math.ceil(seconds / 60)} ${locale.t('minutesShort')}`
+  }
 
   // «2,6 км», not «2.6 км»: Russian and Georgian write the decimal with a comma,
   // and a full stop there reads as a typo in exactly the two languages most
@@ -77,5 +76,5 @@ export function useJourneyFormat() {
 
   const walk = (leg: Pick<WalkLeg, 'metres' | 'minutes'>) => `${distance(leg.metres)} · ${duration(leg.minutes)}`
 
-  return { place, duration, span, time, departTime, arriveTime, distance, walk }
+  return { place, duration, countdown, distance, walk }
 }

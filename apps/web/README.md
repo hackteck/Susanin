@@ -26,10 +26,10 @@ flowchart TD
   PROX --> MAP
   TRANSIT --> STOP["pages/stops/StopPage.vue"]
   PROX --> NEAR["pages/nearby/NearbyPage.vue"]
-  CLIENT --> PLAN["stores/planner.ts<br/>trip ends · timetable · options"]
+  CLIENT --> PLAN["stores/planner.ts<br/>trip ends · route network · options"]
   PROX --> PLAN
   PLAN --> MAP
-  PLAN --> ENGINE["planner/*<br/>RAPTOR, walking, ranking — no Vue"]
+  PLAN --> ENGINE["planner/*<br/>lines by distance, walking, ranking — no Vue"]
   TABLE[("places/places.data.json<br/>OSM addresses, fetched on first focus")] --> PLACES["stores/places.ts<br/>address table · recents"]
   PLACES --> SEARCH["places/search.ts<br/>matching, ranking — no Vue"]
   PLACES --> PLAN
@@ -40,7 +40,7 @@ flowchart TD
 ```
 
 Address search, "nearby" and trip planning run entirely in the browser over the
-578 stops already in the store, the timetable and the address table, each fetched
+578 stops already in the store, the route network and the address table, each fetched
 once — no round trip, nothing to be slow about at a kerb, and neither a position
 nor a search sent anywhere.
 
@@ -53,8 +53,8 @@ nor a search sent anywhere.
 | `api/` | the typed client and the response types — the only place that knows URLs |
 | `stores/transit.ts` | the network, the live vehicle feed, and the route selection |
 | `stores/proximity.ts` | the fix, and whether a stop was reached from the list of stops near it |
-| `stores/planner.ts` | a trip's two ends, the timetable, and the options |
-| `planner/*` | **the journey planner** — RAPTOR, the walking model, ranking; plain TypeScript, tested with `node --test` |
+| `stores/planner.ts` | a trip's two ends, the route network, and the options |
+| `planner/*` | **the journey planner** — lines as chains of stops timed by distance, the walking model, ranking; plain TypeScript, tested with `node --test` |
 | `stores/places.ts` | the address table, fetched the first time a trip field is focused, and the ten recent places |
 | `places/*` | **the address search** — the OSM table `tools/build-places.mjs` bakes, and how a query finds a house in it; plain TypeScript, tested the same way |
 | `stores/sidebar.ts`, `stores/locale.ts`, `stores/toasts.ts` | app-wide UI state |
@@ -105,13 +105,14 @@ nor a search sent anywhere.
 - **The UI is not unit-tested; the journey planner and the address search
   are.** The UI is verified in the browser over the Chrome DevTools Protocol, per
   surstromming's rule: what a screenshot shows — hierarchy, colour, motion — is
-  where its value is. Whether a change of bus leaves time to make it, or whether
-  «Хилтон» finds the Hilton, is not in any screenshot, so `planner/` and
-  `places/` stay free of Vue and the DOM and run under `node --test`, with
+  where its value is. Whether a bus that turns at its terminal can be ridden
+  through it, or whether «Хилтон» finds the Hilton, is not in any screenshot, so
+  `planner/` and `places/` stay free of Vue and the DOM and run under `node --test`, with
   `tsconfig.test.json` checking the tests against Node's types.
 - **A trip is the map's business, not the URL's.** `stores/planner.ts` holds the
-  two ends and always plans from now; the pin after a field arms the map for it,
-  a place found by name is flown to, a single stop chosen from its sheet keeps
+  two ends and plans by where the lines go, with each option's next bus from the
+  live feed; the pin after a field arms the map for it, a place found by name is
+  flown to, a single stop chosen from its sheet keeps
   its arrivals open, and a trip focuses the live feed on its own lines without
   touching the route selection. The ten recent places are the only part of it
   kept between visits.

@@ -32,9 +32,9 @@ npm test             # node --test — no framework, no config
 The tests cover what is invisible when wrong: in the API, map-matching a bus to
 the right leg of its route, transliterating a name without leaving Georgian
 behind, publishing a countdown that counts down, repairing a timetable that has a
-bus doing 275 km/h; in the web app, the journey planner — whether a change of bus
-leaves time to make it — and the address search, whether «Хилтон» finds the
-Hilton. The API's run against the real upstream through
+bus doing 275 km/h; in the web app, the journey planner — whether a bus that turns
+at its terminal can be ridden through it — and the address search, whether
+«Хилтон» finds the Hilton. The API's run against the real upstream through
 `app.fetch`, so there is no server to start — and they skip with a reason rather
 than failing when the fleet has stopped for the night.
 
@@ -48,10 +48,10 @@ there.
 - **Arrival countdowns** that tick down second by second and never count up,
   with the scheduled time beside them.
 - **Directions**, like a map app's: from where you are, an address, a place, a
-  stop or a point on the map, to another — options leaving now, with changes of
-  bus, the walk to the stop and from it, and the first bus's live position beside
-  its scheduled time. Planned on your phone, so where you are never leaves it,
-  and it keeps working with no signal.
+  stop or a point on the map, to another — which lines, from which stop, with
+  changes of bus and the walk to the stop and from it, timed by distance, and
+  each option's next bus as the live feed sees it. Planned on your phone, so
+  where you are never leaves it, and it keeps working with no signal.
 - **Address search** in the same two fields: houses, streets, hotels,
   pharmacies, villages — in Russian, Georgian or English, whichever you happen
   to type — from OpenStreetMap, searched on your phone, with the last ten places
@@ -142,9 +142,12 @@ So this app derives what the feed doesn't provide:
   intermediate times that are physically impossible (route 8 inbound: 13.8 km in
   three minutes) and seven more have impossible stretches; those times are
   re-derived from distance and marked `≈` wherever they are shown.
-- **Journeys.** There is no trip planner behind the feed; this one runs RAPTOR
-  over the timetable in the browser, with walking times calibrated against
-  routed walks in Batumi.
+- **Journeys.** There is no trip planner behind the feed. This one runs in the
+  browser and plans from where the lines go rather than from the published
+  departures — seven directions publish none, and buses come often enough that
+  the question is which line, not which minute — timing rides by distance at the
+  network's measured speed, walks by routed walks in Batumi, and the next bus by
+  the live feed.
 - **Whether a bus is running at all** — the feed keeps reporting vehicles that
   finished hours ago, so anything that has not moved for ten minutes is drawn
   dimmed and excluded from the counts and the estimates.

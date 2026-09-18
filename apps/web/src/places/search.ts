@@ -379,6 +379,9 @@ const sounds = (word: string) =>
     .replace(/x/g, 'ks')
     .replace(/y/g, 'i')
     .replace(/j/g, 'dzh')
+    // Russian writes a foreign h as г as often as х — «Горизонт», «Хилтон» —
+    // so all three are one sound here.
+    .replace(/g/g, 'h')
     .replace(/(.)\1+/g, '$1')
 
 const LATIN_WORD = /^[a-z]/
@@ -401,11 +404,57 @@ function matchWords(words: string[], required: string[][], soft: string[], typeW
   for (const forms of required) {
     if (forms.some((form) => words.includes(form))) continue
     const starts = (list: string[]) => list.some((word) => forms.some((form) => word.startsWith(form)))
-    if (!starts(words) && !starts(typeWords)) return null
-    partial++
+    if (starts(words) || starts(typeWords)) {
+      partial++
+      continue
+    }
+    // A slip of one letter, in a word long enough to be sure of — typed on a
+    // phone, or «Горизонт» against a tower named "Horizon". The last resort,
+    // and ranked after anything that matched as typed.
+    if (!words.some((word) => forms.some((form) => nearly(word, form)))) return null
+    partial += 1.5
   }
   for (const term of soft) if (!words.some((word) => word.startsWith(term))) partial += 0.5
   return partial
+}
+
+/** At most one letter added, dropped or changed. */
+function withinOneEdit(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false
+  let i = 0
+  let j = 0
+  let edits = 0
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      i++
+      j++
+      continue
+    }
+    if (++edits > 1) return false
+    if (a.length > b.length) i++
+    else if (b.length > a.length) j++
+    else {
+      i++
+      j++
+    }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1
+}
+
+/** Shorter than this, one letter is too much of the word to forgive. */
+const FORGIVING_FROM = 5
+
+/**
+ * Whether a typed word is one slip from the start of a word — the start, since
+ * the word may still be being typed. The first letter is trusted: a search that
+ * forgave it too would find everything.
+ */
+const nearly = (word: string, term: string) => {
+  if (term.length < FORGIVING_FROM || word[0] !== term[0]) return false
+  for (const length of [term.length - 1, term.length, term.length + 1]) {
+    if (length <= word.length && withinOneEdit(word.slice(0, length), term)) return true
+  }
+  return false
 }
 
 const isNumber = (term: string) => /^\d/.test(term)
