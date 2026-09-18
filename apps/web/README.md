@@ -8,7 +8,7 @@ aliased. It talks only to our own `/api`, never upstream.
 ```bash
 npm run dev --workspace @susanin/web     # :5173, proxies /api to :8787
 npm run build --workspace @susanin/web   # vue-tsc -b && vite build
-npm test --workspace @susanin/web        # node --test — the journey planner
+npm test --workspace @susanin/web        # node --test — the journey planner and the address search
 ```
 
 Run `npm run basemap` first on a fresh clone — the map tiles are generated, not
@@ -21,7 +21,7 @@ a blank map. The root `predev` does this for you.
 flowchart TD
   API["/api/* (same origin)"] --> CLIENT["api/client.ts<br/>the only place that knows URLs"]
   CLIENT --> TRANSIT["stores/transit.ts<br/>network · live vehicles · selection"]
-  GEO["browser geolocation"] --> PROX["stores/proximity.ts<br/>fix · picked point · origin"]
+  GEO["browser geolocation"] --> PROX["stores/proximity.ts<br/>fix · origin"]
   TRANSIT --> MAP["pages/map/MapPage.vue"]
   PROX --> MAP
   TRANSIT --> STOP["pages/stops/StopPage.vue"]
@@ -30,15 +30,19 @@ flowchart TD
   PROX --> PLAN
   PLAN --> MAP
   PLAN --> ENGINE["planner/*<br/>RAPTOR, walking, ranking — no Vue"]
+  TABLE[("places/places.data.json<br/>OSM addresses, fetched on first focus")] --> PLACES["stores/places.ts<br/>address table · recents"]
+  PLACES --> SEARCH["places/search.ts<br/>matching, ranking — no Vue"]
+  PLACES --> PLAN
   MAP --> TM["components/map/TransitMap.vue<br/>the only Leaflet importer"]
   TM --> TILES[("basemap .pmtiles<br/>IndexedDB, then network")]
   MAP --> BOARD["ArrivalBoard.vue"]
   STOP --> BOARD
 ```
 
-Search, "nearby" and trip planning run entirely in the browser over the 578 stops
-already in the store and the timetable fetched once — no round trip, nothing to be
-slow about at a kerb, and no position sent anywhere.
+Address search, "nearby" and trip planning run entirely in the browser over the
+578 stops already in the store, the timetable and the address table, each fetched
+once — no round trip, nothing to be slow about at a kerb, and neither a position
+nor a search sent anywhere.
 
 ## Layout
 
@@ -49,8 +53,10 @@ slow about at a kerb, and no position sent anywhere.
 | `api/` | the typed client and the response types — the only place that knows URLs |
 | `stores/transit.ts` | the network, the live vehicle feed, and the route selection |
 | `stores/proximity.ts` | the fix, and whether a stop was reached from the list of stops near it |
-| `stores/planner.ts` | a trip's two ends, when, the timetable, and the options |
+| `stores/planner.ts` | a trip's two ends, the timetable, and the options |
 | `planner/*` | **the journey planner** — RAPTOR, the walking model, ranking; plain TypeScript, tested with `node --test` |
+| `stores/places.ts` | the address table, fetched the first time a trip field is focused, and the ten recent places |
+| `places/*` | **the address search** — the OSM table `tools/build-places.mjs` bakes, and how a query finds a house in it; plain TypeScript, tested the same way |
 | `stores/sidebar.ts`, `stores/locale.ts`, `stores/toasts.ts` | app-wide UI state |
 | `pages/*` | one folder per page, each with its own route module, lazy-loaded |
 | `components/map/TransitMap.vue` | **the only file that imports Leaflet** |
@@ -91,19 +97,24 @@ slow about at a kerb, and no position sent anywhere.
 - **Route colours** cross the wire as a hue integer; the theme supplies lightness
   and chroma. No colour is hardcoded in a component.
 - **Offline is the point of the PWA**, not installability: the timetable is
-  cached stale-while-revalidate for 14 days, and live positions and arrivals are
+  cached stale-while-revalidate for 14 days, the address table cache-first under
+  its content hash from the first time a trip field fetches it (not precached —
+  192 KB is not for every visitor), and live positions and arrivals are
   deliberately **never** cached — a cached bus is worse than no bus, because it
   looks current.
-- **The UI is not unit-tested; the journey planner is.** The UI is verified in
-  the browser over the Chrome DevTools Protocol, per surstromming's rule: what a
-  screenshot shows — hierarchy, colour, motion — is where its value is. Whether a
-  change of bus leaves time to make it is not in any screenshot, so `planner/`
-  stays free of Vue and the DOM and runs under `node --test`, with
+- **The UI is not unit-tested; the journey planner and the address search
+  are.** The UI is verified in the browser over the Chrome DevTools Protocol, per
+  surstromming's rule: what a screenshot shows — hierarchy, colour, motion — is
+  where its value is. Whether a change of bus leaves time to make it, or whether
+  «Хилтон» finds the Hilton, is not in any screenshot, so `planner/` and
+  `places/` stay free of Vue and the DOM and run under `node --test`, with
   `tsconfig.test.json` checking the tests against Node's types.
 - **A trip is the map's business, not the URL's.** `stores/planner.ts` holds the
-  two ends; picking one on the map arms the map for that field, a single stop
-  chosen opens its arrivals, and a trip focuses the live feed on its own lines
-  without touching the route selection.
+  two ends and always plans from now; the pin after a field arms the map for it,
+  a place found by name is flown to, a single stop chosen from its sheet keeps
+  its arrivals open, and a trip focuses the live feed on its own lines without
+  touching the route selection. The ten recent places are the only part of it
+  kept between visits.
 
 ## Where the data comes from
 
@@ -111,8 +122,9 @@ slow about at a kerb, and no position sent anywhere.
 |---|---|---|
 | routes, stops, timetables, live buses | our own `/api`, same origin | the SPA never talks to the transit feed directly and never sees an upstream shape. Inside Capacitor the origin differs, so `VITE_API_BASE` bakes in an absolute URL. |
 | the basemap | `public/tiles/*.pmtiles`, cut from a pinned Protomaps planet build by `tools/build-basemap.mjs` | **map data © OpenStreetMap contributors, ODbL 1.0**, rendered by `protomaps-leaflet`. Generated, gitignored, never committed — and required before `dev` or `build`. |
+| addresses and named places | `src/places/places.data.json`, harvested from Overpass by `tools/build-places.mjs` | **© OpenStreetMap contributors, ODbL 1.0**. Committed, like the API's stop names, so a deploy never waits on Overpass; fetched by the browser the first time a trip field is focused. |
 | the site's own address | `SITE_URL` at build time (`.env.example`), through `vite.site.ts` | the Share page's link and QR code, and `index.html`'s link-preview tags. |
-| where you are | the browser's geolocation API | asked for only when you press the locate control or choose "my location", and **the fix never leaves the device**: the API client takes no coordinates, and nearest-stop distances and trip plans are computed in the browser. |
+| where you are | the browser's geolocation API | asked for only when you press the locate control or choose "my location", and **the fix never leaves the device**: the API client takes no coordinates, and nearest-stop distances, address search and trip plans are computed in the browser. |
 
 Attribution is shown in the app, not only here: the Leaflet control credits
 Protomaps and OpenStreetMap, and the About page carries a "where the data comes

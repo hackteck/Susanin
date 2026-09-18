@@ -79,6 +79,20 @@ export default defineConfig(() => {
                 cacheableResponse: { statuses: [200] },
               },
             },
+            {
+              // The address table the trip fields search. Not precached — at
+              // 190 KB compressed it would be downloaded by every visitor on
+              // install, most of whom only glance at the map — but kept once a
+              // field has fetched it, so a search works with no signal. Its
+              // name carries a content hash, so cache-first is never stale.
+              urlPattern: ({ url }) => /\/assets\/places\.data-[\w-]+\.json$/.test(url.pathname),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'susanin-places',
+                expiration: { maxEntries: 2 },
+                cacheableResponse: { statuses: [200] },
+              },
+            },
             // The basemap is deliberately NOT here, and the reason is mechanical
             // rather than a judgement: it is one 6 MB .pmtiles archive read with
             // HTTP Range requests, and CacheStorage cannot store a 206 — a

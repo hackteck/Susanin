@@ -13,10 +13,10 @@
         </p>
       </section>
 
-      <!-- The stop names are OSM's too (name:ru / name:en), and ODbL asks for
-           that to be said wherever they are shown. -->
+      <!-- The stop names and the planner's addresses are OSM's too, and ODbL
+           asks for that to be said wherever they are shown. -->
       <p :class="$style.credit">
-        Map data and stop names ©
+        Map data, stop names and addresses ©
         <a href="https://www.openstreetmap.org/copyright" rel="noreferrer">OpenStreetMap</a>
         contributors, ODbL.
       </p>
@@ -39,7 +39,7 @@ const copy = {
       body: [
         '28 маршрутов Батуми, 578 остановок и все автобусы, которые сейчас на линии — данные обновляются каждые 5 секунд.',
         'Нажмите на остановку, чтобы увидеть расписание и примерное время прибытия.',
-        '«Как добраться» строит поездку по расписанию — с пересадками и дорогой пешком до остановки и от неё. Планирование идёт на вашем устройстве: место, откуда вы едете, никуда не отправляется, а без связи всё работает по сохранённому расписанию.',
+        '«Как добраться» строит поездку по расписанию — с пересадками и дорогой пешком до остановки и от неё. Адрес ищется и поездка планируется на вашем устройстве: ни то, что вы ищете, ни место, откуда вы едете, никуда не отправляется, а без связи всё работает по сохранённым данным.',
       ],
     },
     {
@@ -62,7 +62,7 @@ const copy = {
       body: [
         'ბათუმის 28 მარშრუტი, 578 გაჩერება და ავტობუსების ცოცხალი მდებარეობა, რომელიც ყოველ 5 წამში ახლდება.',
         'გაჩერებაზე დაწკაპუნებით ნახავთ განრიგს და სავარაუდო მოსვლის დროს.',
-        '„როგორ მივიდე“ მგზავრობას განრიგით აგებს — გადაჯდომებით და ფეხით გზით გაჩერებამდე და გაჩერებიდან. გეგმა თქვენს მოწყობილობაზე იქმნება: საიდან მიდიხართ, არსად იგზავნება, ხოლო კავშირის გარეშე ყველაფერი შენახული განრიგით მუშაობს.',
+        '„როგორ მივიდე“ მგზავრობას განრიგით აგებს — გადაჯდომებით და ფეხით გზით გაჩერებამდე და გაჩერებიდან. მისამართის ძებნა და გეგმა თქვენს მოწყობილობაზე ხდება: არც ის, რასაც ეძებთ, და არც ის, საიდან მიდიხართ, არსად იგზავნება, ხოლო კავშირის გარეშე ყველაფერი შენახული მონაცემებით მუშაობს.',
       ],
     },
     {
@@ -85,7 +85,7 @@ const copy = {
       body: [
         "Batumi's 28 bus routes, 578 stops, and every bus currently running, refreshed every 5 seconds.",
         'Tap a stop for its timetable and for how long the next bus looks like taking.',
-        'Directions plans a trip from the timetable — with changes of bus, and the walk to the stop and from it. The planning happens on your device: where you are setting off from is never sent anywhere, and with no signal it works from the saved timetable.',
+        'Directions plans a trip from the timetable — with changes of bus, and the walk to the stop and from it. Finding the address and planning the trip both happen on your device: neither what you search for nor where you are setting off from is sent anywhere, and with no signal it works from the saved data.',
       ],
     },
     {

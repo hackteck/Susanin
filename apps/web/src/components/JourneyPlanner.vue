@@ -8,126 +8,217 @@
     </div>
 
     <div :class="$style.fields">
-      <!-- The same two marks the map draws at either end, joined as the trip is. -->
-      <div :class="$style.rail" aria-hidden="true">
-        <i :class="$style.startMark" />
-        <i :class="$style.railLine" />
-        <i :class="$style.endMark" />
-      </div>
-
-      <div :class="$style.inputs">
-        <Input
-          ref="fromInput"
-          v-model="queries.from"
-          type="search"
-          size="sm"
-          autocomplete="off"
-          :placeholder="locale.t('fromLabel')"
-          :aria-label="locale.t('fromLabel')"
-          @focus="onFocus('from', $event)"
-          @blur="onBlur"
-          @input="onType('from')"
-          @keydown="onKeydown"
-        />
-        <Input
-          ref="toInput"
-          v-model="queries.to"
-          type="search"
-          size="sm"
-          autocomplete="off"
-          :placeholder="locale.t('toLabel')"
-          :aria-label="locale.t('toLabel')"
-          @focus="onFocus('to', $event)"
-          @blur="onBlur"
-          @input="onType('to')"
-          @keydown="onKeydown"
-        />
-      </div>
-
+      <Input
+        ref="fromInput"
+        name="from"
+        v-model="queries.from"
+        type="search"
+        autocomplete="off"
+        role="combobox"
+        aria-autocomplete="list"
+        :aria-expanded="expanded('from')"
+        :aria-controls="expanded('from') ? listId : undefined"
+        :aria-activedescendant="activeOption('from')"
+        :placeholder="locale.t('fromLabel')"
+        :aria-label="locale.t('fromLabel')"
+        @focus="onFocus('from', $event)"
+        @blur="onBlur"
+        @input="onType('from')"
+        @keydown="onKeydown"
+      />
+      <!-- The other way to name a place: point at it. `aria-pressed` carries
+           the armed state, since the crosshair cursor cannot. -->
       <Button
-        variant="ghost"
+        variant="outline"
         size="icon"
-        :aria-label="locale.t('swapEnds')"
-        :title="locale.t('swapEnds')"
-        :disabled="!hasAnything"
-        @click="planner.swap()"
+        :class="pickClasses('from')"
+        :aria-label="pickLabel('from')"
+        :title="pickLabel('from')"
+        :aria-pressed="planner.picking === 'from'"
+        @click="togglePick('from')"
       >
-        <Icon :icon="ArrowUpDown" />
+        <Icon :icon="MapPin" />
+      </Button>
+
+      <!-- The two marks the map draws at either end, and between them the one
+           control that acts on both. Placed by the grid, so it sits between the
+           fields in the tab order as well as on screen. -->
+      <div :class="$style.rail">
+        <i :class="$style.startMark" aria-hidden="true" />
+        <Button
+          variant="ghost"
+          size="icon"
+          :aria-label="locale.t('swapEnds')"
+          :title="locale.t('swapEnds')"
+          :disabled="!hasAnything"
+          @click="planner.swap()"
+        >
+          <Icon :icon="ArrowUpDown" />
+        </Button>
+        <i :class="$style.endMark" aria-hidden="true" />
+      </div>
+
+      <Input
+        ref="toInput"
+        name="to"
+        v-model="queries.to"
+        type="search"
+        autocomplete="off"
+        role="combobox"
+        aria-autocomplete="list"
+        :aria-expanded="expanded('to')"
+        :aria-controls="expanded('to') ? listId : undefined"
+        :aria-activedescendant="activeOption('to')"
+        :placeholder="locale.t('toLabel')"
+        :aria-label="locale.t('toLabel')"
+        @focus="onFocus('to', $event)"
+        @blur="onBlur"
+        @input="onType('to')"
+        @keydown="onKeydown"
+      />
+      <Button
+        variant="outline"
+        size="icon"
+        :class="pickClasses('to')"
+        :aria-label="pickLabel('to')"
+        :title="pickLabel('to')"
+        :aria-pressed="planner.picking === 'to'"
+        @click="togglePick('to')"
+      >
+        <Icon :icon="MapPin" />
       </Button>
     </div>
 
-    <!-- Pressing a suggestion must not blur the field first, or the list is
-         gone before the click lands. -->
-    <ul v-if="suggestions.length" :class="$style.suggestions" @mousedown.prevent>
-      <li v-for="(item, index) in suggestions" :key="item.key">
-        <button type="button" :class="suggestionClasses(index)" @click="choose(item)">
-          <Icon v-if="item.icon" :icon="item.icon" :size="16" :class="$style.suggestionIcon" />
-          <span v-else :class="$style.code">{{ item.code }}</span>
-          <span :class="$style.suggestionText">{{ item.label }}</span>
-          <span v-if="item.meta" :class="$style.meta">{{ item.meta }}</span>
-        </button>
+    <!-- Pressing an option must not blur the field first, or the list is gone
+         before the click lands. -->
+    <ul
+      v-if="options.length"
+      :id="listId"
+      role="listbox"
+      :aria-label="listLabel"
+      :class="$style.options"
+      @mousedown.prevent
+    >
+      <li
+        v-for="(option, index) in options"
+        :id="optionId(index)"
+        :key="option.key"
+        role="option"
+        :aria-selected="index === highlighted"
+        :class="optionClasses(index)"
+        @click="option.choose()"
+        @mousemove="highlighted = index"
+      >
+        <Icon :icon="option.icon" :size="16" :class="$style.optionIcon" />
+        <span :class="$style.optionText">
+          <span :class="$style.optionLabel">{{ option.label }}</span>
+          <span v-if="option.detail" :class="$style.optionDetail">{{ option.detail }}</span>
+        </span>
+        <span v-if="option.meta" :class="$style.meta">{{ option.meta }}</span>
       </li>
     </ul>
-    <p v-else-if="noResults" :class="$style.empty">{{ locale.t("noResults") }}</p>
 
-    <div :class="$style.when">
-      <DropdownMenu :items="whenItems" align="start" @select="chooseWhen">
-        <template #trigger="{ toggle }">
-          <Button variant="ghost" size="sm" :aria-label="locale.t('whenLabel')" @click="toggle">
-            <Icon :icon="Clock" :size="16" />
-            {{ whenLabel }}
-          </Button>
-        </template>
-      </DropdownMenu>
-      <Input
-        v-if="planner.whenMode !== 'now'"
-        v-model="clockValue"
-        type="time"
-        size="sm"
-        :class="$style.time"
-        :aria-label="whenLabel"
-      />
-    </div>
+    <p v-if="status === 'loading'" :class="$style.status">
+      <Spinner :size="14" />
+      {{ locale.t("loading") }}
+    </p>
+    <p v-else-if="status === 'failed'" :class="$style.status" @mousedown.prevent>
+      {{ locale.t("placesFailed") }}
+      <Button variant="ghost" size="sm" @click="places.load()">{{ locale.t("retry") }}</Button>
+    </p>
+    <p v-else-if="status === 'empty'" :class="$style.status">{{ locale.t("noResults") }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, useCssModule, useTemplateRef, watch } from "vue";
+import { computed, nextTick, reactive, ref, useCssModule, useId, useTemplateRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowUpDown, Check, Clock, LocateFixed, MapPin } from "lucide";
+import {
+  ArrowUpDown,
+  Banknote,
+  BedDouble,
+  Building,
+  Building2,
+  BusFront,
+  Car,
+  Church,
+  Cross,
+  GraduationCap,
+  History,
+  House,
+  Landmark,
+  LocateFixed,
+  MapPin,
+  MapPinned,
+  ShoppingBag,
+  Signpost,
+  Trees,
+  Utensils,
+} from "lucide";
 import { Button } from "@surstromming/button";
-import { DropdownMenu, type DropdownMenuItem } from "@surstromming/dropdown-menu";
 import { Icon, type IconNode } from "@surstromming/icon";
 import { Input } from "@surstromming/input";
+import { Spinner } from "@surstromming/spinner";
 import { useJourneyFormat } from "@/composables/useJourneyFormat";
-import { useStopSearch } from "@/composables/useStopSearch";
-import { clockLabel, minutesInBatumi } from "@/planner/time";
+import { fold, RESULT_LIMIT, type FoundPlace, type PlaceKind } from "@/places/search";
+import { metresBetween } from "@/planner/geo";
 import { useLocale } from "@/stores/locale";
-import { usePlanner, type Place, type PlaceField, type WhenMode } from "@/stores/planner";
+import { usePlaces } from "@/stores/places";
+import { usePlanner, type Place, type PlaceField } from "@/stores/planner";
 import { useProximity } from "@/stores/proximity";
 import { useSidebar } from "@/stores/sidebar";
 import { useTransit } from "@/stores/transit";
 
-interface Suggestion {
+interface Option {
   key: string;
+  icon: IconNode;
   label: string;
-  icon?: IconNode;
-  code?: number;
+  detail?: string;
   meta?: string;
   choose: () => void;
 }
 
+/** A place's kind at a glance; the name beside it says the rest. */
+const KIND_ICONS: Record<PlaceKind, IconNode> = {
+  address: House,
+  street: Signpost,
+  area: MapPinned,
+  transport: BusFront,
+  food: Utensils,
+  shop: ShoppingBag,
+  lodging: BedDouble,
+  health: Cross,
+  education: GraduationCap,
+  worship: Church,
+  money: Banknote,
+  sight: Landmark,
+  leisure: Trees,
+  office: Building2,
+  car: Car,
+  building: Building,
+};
+
+/** Recents matching what is being typed come first, but never crowd out the search. */
+const RECALLED_WHILE_TYPING = 3;
+
+/** Past this a distance is not a hint about which Spar, it is "you are not in Batumi". */
+const DISTANCE_WORTH_SHOWING = 30_000;
+
 const locale = useLocale();
+const places = usePlaces();
 const planner = usePlanner();
 const proximity = useProximity();
 const sidebar = useSidebar();
 const transit = useTransit();
 const route = useRoute();
 const router = useRouter();
+const format = useJourneyFormat();
 const $style = useCssModule();
 
 const fromInput = useTemplateRef<{ $el: HTMLInputElement }>("fromInput");
 const toInput = useTemplateRef<{ $el: HTMLInputElement }>("toInput");
+
+const listId = useId();
 
 /** What each field shows: the chosen place's name, or what is being typed. */
 const queries = reactive<Record<PlaceField, string>>({ from: "", to: "" });
@@ -136,17 +227,18 @@ const highlighted = ref(0);
 
 const hasAnything = computed(() => !!(planner.from || planner.to || queries.from || queries.to));
 
-const { place: placeLabel } = useJourneyFormat();
+const placeLabel = format.place;
 
 // A place chosen anywhere — here, from a stop's sheet, by a tap on the map, by
 // a swap — shows up in its field. Typing is never overwritten: a field only
-// changes when its place does.
+// changes when its place does. The address table arriving counts, because it
+// is what names a point tapped on the map.
 const syncField = (field: PlaceField) => {
   const place = planner[field];
   if (place) queries[field] = placeLabel(place);
 };
 watch(
-  () => [planner.from, planner.to, locale.locale, transit.stops.length] as const,
+  () => [planner.from, planner.to, locale.locale, transit.stops.length, places.ready] as const,
   () => {
     syncField("from");
     syncField("to");
@@ -172,48 +264,72 @@ const activeQuery = computed(() => {
   if (!field) return "";
   const text = queries[field];
   // Focusing a field that already names a place is not a search for that name.
-  return text === placeLabel(planner[field]) ? "" : text;
+  return text === placeLabel(planner[field]) ? "" : text.trim();
 });
-
-const { results } = useStopSearch(activeQuery);
 
 const canLocate = typeof navigator !== "undefined" && "geolocation" in navigator;
 
-const suggestions = computed<Suggestion[]>(() => {
+const distanceTo = (place: FoundPlace) => {
+  const fix = proximity.anchor;
+  if (!fix) return undefined;
+  const metres = metresBetween(fix, place);
+  return metres < DISTANCE_WORTH_SHOWING ? format.distance(metres) : undefined;
+};
+
+const placeOption = (field: PlaceField, place: FoundPlace, icon: IconNode): Option => ({
+  key: place.id,
+  icon,
+  label: locale.name(place.name),
+  detail: place.detail ? locale.name(place.detail) : undefined,
+  meta: distanceTo(place),
+  choose: () => choose(field, { kind: "place", place }),
+});
+
+const recalled = (typed: string) =>
+  places.recent.filter((place) => [place.name.ru, place.name.ka, place.name.en].some((name) => fold(name).includes(typed)));
+
+const options = computed<Option[]>(() => {
   const field = activeField.value;
   if (!field) return [];
 
-  if (activeQuery.value.trim().length < 2) {
-    const options: Suggestion[] = [];
+  // A field with nothing typed offers where the reader is, then where they have
+  // been going — which between them are most of the trips anybody plans.
+  if (activeQuery.value.length < 2) {
+    const list: Option[] = [];
     if (canLocate) {
-      options.push({
-        key: "me",
-        label: locale.t("followMe"),
-        icon: LocateFixed,
-        choose: () => place(field, { kind: "me" }),
-      });
+      list.push({ key: "me", icon: LocateFixed, label: locale.t("followMe"), choose: () => choose(field, { kind: "me" }) });
     }
-    options.push({ key: "pick", label: locale.t("chooseOnMap"), icon: MapPin, choose: () => pickOnMap(field) });
-    return options;
+    return [...list, ...places.recent.map((place) => placeOption(field, place, History))];
   }
 
-  return results.value.map((stop) => ({
-    key: stop.id,
-    code: stop.code,
-    label: locale.name(stop.name),
-    meta: String(stop.routeIds.length),
-    choose: () => place(field, { kind: "stop", stopId: stop.id }),
-  }));
+  const remembered = recalled(fold(activeQuery.value)).slice(0, RECALLED_WHILE_TYPING);
+  const seen = new Set(remembered.map((place) => place.id));
+  const found = places.search(activeQuery.value, proximity.anchor).filter((place) => !seen.has(place.id));
+  return [
+    ...remembered.map((place) => placeOption(field, place, History)),
+    ...found.map((place) => placeOption(field, place, KIND_ICONS[place.kind] ?? MapPin)),
+  ].slice(0, RESULT_LIMIT);
 });
 
-const noResults = computed(() => !!activeField.value && activeQuery.value.trim().length >= 2 && !results.value.length);
+/** Why a search shows nothing: not here yet, not coming, or nothing matched. */
+const status = computed<"loading" | "failed" | "empty" | null>(() => {
+  if (!activeField.value || activeQuery.value.length < 2) return null;
+  if (places.failed) return "failed";
+  if (!places.ready) return "loading";
+  return options.value.length ? null : "empty";
+});
 
-watch(suggestions, () => (highlighted.value = 0));
+watch(options, () => (highlighted.value = 0));
 
-const suggestionClasses = (index: number) => [
-  $style.suggestion,
-  { [$style.isHighlighted]: index === highlighted.value },
-];
+const listLabel = computed(() => (activeField.value === "to" ? locale.t("toLabel") : locale.t("fromLabel")));
+const expanded = (field: PlaceField) => activeField.value === field && options.value.length > 0;
+const optionId = (index: number) => `${listId}-${index}`;
+const activeOption = (field: PlaceField) => (expanded(field) ? optionId(highlighted.value) : undefined);
+
+const optionClasses = (index: number) => [$style.option, { [$style.isHighlighted]: index === highlighted.value }];
+
+const pickClasses = (field: PlaceField) => ({ [$style.isArmed]: planner.picking === field });
+const pickLabel = (field: PlaceField) => locale.t(planner.picking === field ? "chooseOnMapCancel" : "chooseOnMap");
 
 const inputFor = (field: PlaceField) => (field === "from" ? fromInput.value?.$el : toInput.value?.$el);
 
@@ -221,9 +337,11 @@ const onFocus = (field: PlaceField, event: FocusEvent) => {
   activeField.value = field;
   // A field that names a place is edited by replacing it, as an address bar is.
   (event.target as HTMLInputElement | null)?.select();
-  // The timetable and the permission state are both wanted the moment anyone
-  // starts on a trip, and neither is worth fetching for a visit that never does.
+  // The timetable, the addresses and the permission state are all wanted the
+  // moment anyone starts on a trip, and none is worth fetching for a visit
+  // that never does.
   void planner.loadTimetable();
+  void places.load();
   void proximity.init();
 };
 
@@ -240,7 +358,7 @@ const onType = (field: PlaceField) => {
 };
 
 const onKeydown = (event: KeyboardEvent) => {
-  const count = suggestions.value.length;
+  const count = options.value.length;
   if (event.key === "ArrowDown" && count) {
     event.preventDefault();
     highlighted.value = (highlighted.value + 1) % count;
@@ -249,19 +367,18 @@ const onKeydown = (event: KeyboardEvent) => {
     highlighted.value = (highlighted.value - 1 + count) % count;
   } else if (event.key === "Enter" && count) {
     event.preventDefault();
-    choose(suggestions.value[highlighted.value]!);
+    options.value[highlighted.value]!.choose();
   } else if (event.key === "Escape") {
     (event.target as HTMLInputElement).blur();
   }
 };
 
-const choose = (item: Suggestion) => item.choose();
-
 const showMap = async () => {
   if (route.path !== "/") await router.push("/");
 };
 
-const place = async (field: PlaceField, chosen: Place) => {
+const choose = async (field: PlaceField, chosen: Place) => {
+  if (chosen.kind === "place") places.remember(chosen.place);
   planner.setPlace(field, chosen);
   inputFor(field)?.blur();
 
@@ -273,10 +390,10 @@ const place = async (field: PlaceField, chosen: Place) => {
     return;
   }
 
-  // One end known. A stop is worth seeing straight away — its arrivals are on
-  // the map — but the drawer stays, and the other field takes the cursor, because
-  // the trip is only half asked.
-  if (chosen.kind === "stop") await showMap();
+  // One end known. A place found by name is worth seeing straight away — where
+  // it is, is the first thing to check about it — but the drawer stays, and the
+  // other field takes the cursor, because the trip is only half asked.
+  if (chosen.kind === "place") await showMap();
   const other: PlaceField = field === "from" ? "to" : "from";
   await nextTick();
   inputFor(other)?.focus();
@@ -284,9 +401,14 @@ const place = async (field: PlaceField, chosen: Place) => {
 
 // The map is only at "/", and on a phone the drawer covers it: arming the pick
 // somewhere else has to take the reader to the thing they were just asked to tap.
-const pickOnMap = async (field: PlaceField) => {
+const togglePick = async (field: PlaceField) => {
+  if (planner.picking === field) {
+    planner.disarm();
+    return;
+  }
+  // The table is what names the point once it is tapped.
+  void places.load();
   planner.arm(field);
-  inputFor(field)?.blur();
   await showMap();
   sidebar.closeOnMobile();
 };
@@ -296,35 +418,6 @@ const clear = () => {
   queries.from = "";
   queries.to = "";
 };
-
-const whenKeys: Record<WhenMode, "leaveNow" | "departAt" | "arriveBy"> = {
-  now: "leaveNow",
-  depart: "departAt",
-  arrive: "arriveBy",
-};
-
-const whenLabel = computed(() => locale.t(whenKeys[planner.whenMode]));
-
-const whenItems = computed<DropdownMenuItem[]>(() =>
-  (Object.keys(whenKeys) as WhenMode[]).map((mode) => ({
-    label: locale.t(whenKeys[mode]),
-    value: mode,
-    icon: mode === planner.whenMode ? Check : undefined,
-  })),
-);
-
-// A time field that opens empty is one more thing to fill in. It starts at the
-// next five minutes in Batumi, which is what "leave at" means most of the time.
-const chooseWhen = (value: string) => {
-  const mode = value as WhenMode;
-  const soon = Math.ceil((minutesInBatumi(Date.now()) + 1) / 5) * 5;
-  planner.setWhen(mode, planner.whenClock || clockLabel(soon));
-};
-
-const clockValue = computed({
-  get: () => planner.whenClock,
-  set: (value: string) => planner.setWhen(planner.whenMode, value),
-});
 </script>
 
 <style module lang="scss">
@@ -351,11 +444,14 @@ const clockValue = computed({
   font-weight: 600;
 }
 
+// Rail, field, pin — twice. The rail spans both rows, so the swap between the
+// two marks sits exactly between the two fields it swaps.
 .fields {
   display: grid;
-  gap: design.spacing(2);
+  column-gap: design.spacing(2);
+  row-gap: design.spacing(3);
   align-items: center;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
 .rail {
@@ -364,8 +460,10 @@ const clockValue = computed({
   align-items: center;
   align-self: stretch;
   justify-content: space-between;
-  // The marks sit on the middle of each field, not at the top of the stack.
-  padding: design.spacing(3) 0;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  // Each mark on the middle of its field: half a field's height, less half a mark.
+  padding: calc((#{design.spacing(9)} - #{design.spacing(2.5)}) / 2) 0;
 }
 
 .startMark,
@@ -386,21 +484,22 @@ const clockValue = computed({
   background-color: var(--stop-selected-fill);
 }
 
-.railLine {
-  flex: 1;
-  width: 0;
-  margin: design.spacing(1) 0;
-  border-left: 2px dotted design.color(muted-foreground);
+// `Button` has no "active" variant, so the armed look is an app class riding the
+// fallthrough attribute — it composes with the button's own module classes
+// rather than replacing them. It has to outrank them, not tie with them: the
+// outline variant's dark-theme rule carries the theme attribute as well, and a
+// bare class lost to it, so the armed pin looked exactly like an idle one in
+// the dark. `aria-pressed` is the same fact the class states, and the extra
+// selector is what wins in both themes.
+.isArmed[aria-pressed="true"] {
+  &,
+  #{design.$darkThemeSelector} & {
+    border-color: design.color(sidebar-ring);
+    background-color: design.color(sidebar-accent);
+  }
 }
 
-.inputs {
-  display: flex;
-  flex-direction: column;
-  gap: design.spacing(1.5);
-  min-width: 0;
-}
-
-.suggestions {
+.options {
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -408,49 +507,42 @@ const clockValue = computed({
   list-style: none;
 }
 
-.suggestion {
+.option {
   display: grid;
   gap: design.spacing(2);
   align-items: center;
-  grid-template-columns: auto 1fr auto;
-  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   padding: design.spacing(2);
-  border: none;
   border-radius: design.radius(sm);
-  background-color: transparent;
   color: design.color(sidebar-foreground);
-  text-align: left;
   cursor: pointer;
-
-  &:hover {
-    background-color: design.color(sidebar-accent);
-  }
-
-  &:focus-visible {
-    outline: 2px solid design.color(sidebar-ring);
-    outline-offset: -2px;
-  }
 }
 
 .isHighlighted {
   background-color: design.color(sidebar-accent);
 }
 
-.suggestionIcon {
+.optionIcon {
   color: design.color(muted-foreground);
 }
 
-// The number on the pole is the unambiguous handle, so it leads.
-.code {
-  min-width: design.spacing(10);
-  color: design.color(muted-foreground);
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
+.optionText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-.suggestionText {
-  overflow: hidden;
+// An address ends in its house number, which is the part that tells two rows
+// apart — so a long one wraps rather than ellipsing the number away.
+.optionLabel {
   font-size: 0.8125rem;
+  text-wrap: pretty;
+}
+
+.optionDetail {
+  overflow: hidden;
+  color: design.color(muted-foreground);
+  font-size: 0.6875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -461,19 +553,12 @@ const clockValue = computed({
   font-variant-numeric: tabular-nums;
 }
 
-.empty {
-  padding-left: design.spacing(2);
-  color: design.color(muted-foreground);
-  font-size: 0.75rem;
-}
-
-.when {
+.status {
   display: flex;
   gap: design.spacing(2);
   align-items: center;
-}
-
-.time {
-  max-width: design.spacing(28);
+  padding-left: design.spacing(2);
+  color: design.color(muted-foreground);
+  font-size: 0.75rem;
 }
 </style>

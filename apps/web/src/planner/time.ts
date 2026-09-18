@@ -24,22 +24,3 @@ export function clockLabel(minutes: number): string {
 }
 
 export const isTomorrow = (minutes: number) => minutes >= 1440
-
-/** "HH:MM" as typed into a time field, or null. */
-export function parseClock(value: string): number | null {
-  const match = /^(\d{1,2}):(\d{2})/.exec(value.trim())
-  if (!match) return null
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-  return hours < 24 && minutes < 60 ? hours * 60 + minutes : null
-}
-
-/**
- * A chosen clock time as planner minutes relative to now. A time more than half
- * an hour gone is taken to mean tomorrow's — nobody asks to leave at 07:00 at
- * ten at night meaning this morning — while a few minutes ago is still today,
- * because that is someone who took a moment to type.
- */
-export function upcoming(clock: number, now: number): number {
-  return clock < now - 30 ? clock + 1440 : clock
-}

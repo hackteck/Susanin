@@ -270,7 +270,9 @@ what a cheap translation looks like. The count is not the only thing a noun has
 to agree with: the header counts buses across whatever is selected, so it is
 «на линии» for one route and «на линиях» for several or for none, which is all
 28. Georgian inflects the same way (`ხაზზე`/`ხაზებზე`) and English needs no line
-noun at all to say it.
+noun at all to say it. Numbers follow the locale as well — «2,6 км», through
+`Intl.NumberFormat` — because a decimal point there reads as a typo in exactly
+the two languages most readers use.
 
 The names are the harder half. Seven stops in ten (407 of 578) have no Latin
 name at all, so
@@ -605,8 +607,12 @@ What is cached, and why each choice is deliberate:
   year, so serving it from cache costs nothing and buys the whole offline story,
   trip planning included: verified with the network off, a plan comes back from
   the cached timetable while the header says there is no live data.
-- **Map tiles** — cache-first, capped at 500 entries and 7 days. Tiles are the
-  one thing that could quietly fill a phone.
+- **The address table** (`assets/places.data-<hash>.json`) — cache-first, and
+  deliberately **not** precached: 192 KB for every visitor on install, most of
+  whom only glance at the map, is the wrong trade, so it is kept from the first
+  time a trip field fetches it. Its name carries a content hash, so cache-first
+  can never serve a stale one. Verified with the network off: after one online
+  visit, «аптека» still lists pharmacies.
 - **The basemap archives live in IndexedDB**, keyed by the sha256 the build
   recorded rather than by their URL — the URL never changes, so a URL key would
   serve a year-old map forever, and a stale map is not a visible fault but last
@@ -735,23 +741,77 @@ The keystore in that workflow is a throwaway for an unpublishable build. A real
 release needs a keystore held as a secret; that is deliberately not wired up,
 because a signing key that lives in a workflow file is not a signing key.
 
-## Finding a stop, and getting there
+## Finding a place, and getting there
 
-All of it client-side over the 578 stops already in the store.
+All of it client-side: the 578 stops already in the store, and an address table
+fetched once.
 
-- **Search lives in the trip planner's two fields** — `Откуда` and `Куда` in the
-  sidebar, on every page. It replaced the stop search it grew out of and keeps its
-  rules: a query matches the pole number *or* a name fragment in **all three
-  locales at once** — someone reading the Russian UI may still be typing what is
-  printed on the pole in Georgian — and a numeric query ranks exact codes first,
-  because the code is the only unambiguous handle: 74 names are shared by more
-  than one stop. An empty field offers "my location" and "choose on the map",
-  as Google's does.
-- **One end chosen, and it is a stop: its arrivals open.** That is what keeps
-  looking a stop up by its number a single gesture, and the cursor moves on to
-  the other field, because the trip is only half asked. Choosing only a
+The trip planner's two fields — `Откуда` and `Куда` in the sidebar, on every
+page — search **addresses and named places, not stops.** Nobody's destination is
+a pole; it is a house, a hotel, a pharmacy, a village. A stop is still an end of
+a trip from its own sheet and page, and is found on the map, in Nearby or on its
+route — looking one up by the number on the pole is no longer something the
+sidebar does.
+
+- **The table is OpenStreetMap's, baked at build time and searched on the
+  device.** `tools/build-places.mjs` harvests Batumi's houses, streets, named
+  places, districts and villages from Overpass into
+  `apps/web/src/places/places.data.json` — 16,694 houses on 1,247 streets, 4,046
+  places, 91 areas; 887 KB, 192 KB with brotli — and `places/search.ts` searches
+  it: plain TypeScript with no Vue, tested with `node --test` like the planner.
+  Not a geocoder behind an API, because no public one can do this job, and that
+  was measured rather than assumed: Nominatim's usage policy forbids
+  search-as-you-type outright, and Photon's public instance refuses `lang=ru` and
+  answers a Cyrillic query with nothing — «Руставели 12» came back as a "12th
+  street" in a village. OSM itself carries `name:ru` on every named street here.
+  The file is committed, like `names.data.json`: a deploy that waits on a
+  volunteer Overpass server fails on someone else's bad afternoon.
+- **Houses spell their street differently from the street.** 3,650 of the
+  harvested addresses name it another way than the road does — «შარაშიძე მიხეილის ქუჩა»
+  on the houses, «მიხეილ შარაშიძის ქუჩა» on the road; «ადლიის» against
+  «ადლიას»; «მე-3 შეს» against «III შესახვევი»; "Zurab Gorgiladze Street" in
+  English. Taken literally, each became a second street in the results, with a
+  sounded-out Russian name beside the real one. The build compares a spelling
+  with the roads *near that house* — same street type, same number, the same
+  words give or take a Georgian ending, within 400 m — and the nearness is what
+  makes a loose comparison safe. 163 streets are still known only from their
+  houses, mostly in Chakvi, whose roads OSM has not named.
+- **A query matches in all three locales at once** — someone reading the Russian
+  UI may type what the sign says in Georgian. A house letter matches whichever
+  keyboard typed it (12ა, 12а, 12a); a number inside a street's name («26 Мая») is
+  not taken for a house; «ул.», «пр-т», "st" and «ქ.» count when they match and
+  are forgiven when they do not. Two second chances, each for a failure found on
+  a real query: a word is also compared by its Latin sound, because the hotels
+  are named in Latin script and a Russian reader types «Хилтон»; and a place's OSM
+  type carries its own words in three languages, because «аптека» otherwise
+  finds none of the 156 pharmacies, which are called PSP and Aversi. A match on
+  the type ranks after a match on the name — «автовокзал» is one terminal's name
+  and eight minibus stands' type.
+- **Ranking**: a village or town first — Gonio is somewhere people go — then a
+  street before its own lanes and dead ends, then a place someone has written a
+  Wikipedia article about, then the fortieth café, and Batumi's districts last,
+  since their names are mostly the avenues', borrowed. House numbers that only
+  start the one typed come in house order, not by distance. Among equals the
+  nearest to the reader leads. Every row carries its address, or the district or
+  village it is in — from OSM's administrative boundaries — so two Spars are told
+  apart.
+- **An empty field offers "my location" first, then the ten places last
+  chosen.** The recents are the one part of a trip kept in `localStorage`: a
+  place someone went to is a place they go to, whereas a trip or a route
+  selection reopened tomorrow is a question nobody asked. They are stored with
+  their names in all three locales, so a rebuilt table does not orphan them.
+  Choosing "my location" for one end when the other already is moves it there,
+  rather than planning a trip from me to me.
+- **The table loads when a field is first focused**, not with the page — 190 KB
+  is not for a visit that only glances at the map — and the service worker keeps
+  it from then on (see *Installable, and offline*).
+- **Choosing moves the reader on.** A place found by name is flown to, because
+  where it is, is the first thing to check about an address picked from a list,
+  and the cursor moves to the other field, because the trip is only half asked;
+  a stop chosen from its sheet keeps its arrivals open meanwhile. Choosing only a
   destination, with location already permitted, fills the start with "my
-  location" — never with a prompt nobody asked for.
+  location" — never with a prompt nobody asked for, and never when the
+  destination *is* "my location", which used to make that trip from me to me.
 - **From a stop to its routes.** The stop page opens with a chip per route
   through it, and pressing one lands on the map with **only that route** drawn.
   It sets the selection and navigates — the selection *is* the map's state, so
@@ -776,9 +836,12 @@ All of it client-side over the 578 stops already in the store.
   panel stays open reads as the map losing track of it. A trip's two ends use
   the same inverted pair — a hollow ring to start, a filled dot to finish — in
   the fields, the step list and on the map alike.
-- **Point at the map instead.** A place on a map needs no name. "Choose on the
-  map" arms it for one field; the sheet steps aside so the whole map is
-  tappable, and the next tap is that end of the trip. While armed the overlay
+- **Point at the map instead.** The pin after each field — where the old stop
+  search kept its own — arms the map for that end, and pressing it again
+  disarms it; the sheet steps aside so the whole map is tappable, and the next
+  tap is that end of the trip. The point is then named after the house or place
+  within 40 m of it, from the same table, because "Точка на карте → Точка на
+  карте" as a trip's title says nothing about the trip. While armed the overlay
   and marker panes are made inert — one rule, rather than branching twelve
   marker handlers — and it has to reach *inside* the panes: Leaflet gives every
   interactive marker and path `pointer-events: auto` of its own, so a rule on
@@ -798,10 +861,11 @@ All of it client-side over the 578 stops already in the store.
   the reader had never seen.
 - **Nearby** (`/nearby`) sorts stops by straight-line distance, capped at the
   planner's own 1.2 km. It says **"straight-line"** in the UI and means it for the
-  distance; the walk time beside it is the planner's model (below), so the two
-  screens cannot give the same walk two times. Distance leads the row, because
-  at a kerb "how far" is the question and the name only matters once you have
-  chosen.
+  distance; the walk time beside it is the planner's model (below), rounded up
+  the same way, so the two screens cannot give the same walk two times — it used
+  to round to the nearest minute, and a 7.4-minute walk was 7 here and 8 in a
+  plan. Distance leads the row, because at a kerb "how far" is the question and
+  the name only matters once you have chosen.
 
 ## Planning a trip
 
@@ -842,14 +906,17 @@ no Vue and no DOM, so `node --test` runs it directly.
   plus five minutes a change and walking counted at 1.5×; nothing over 1.5× the
   best's cost, except that the best bus option always survives, so 23:30 offers
   the 07:00 as well as the 40-minute walk that beats it. Walking alone is an
-  option when it is under an hour. Arrive-by bisects the departure time, since
-  the earliest arrival never gets earlier as the departure gets later.
+  option when it is under an hour.
+- **Always from now.** Depart-at and arrive-by were offered and taken out: the
+  question at a kerb is how to get there from here, now, and a control nobody
+  changes is one everybody has to read past. The search is depart-only as a
+  result — `PlanQuery` has no mode.
 - **Lines with no timetable** are offered apart: a direct ride on one, with its
   ride time and "+ the wait", when it could beat the best timed option.
 - **Live, where it helps:** the step list shows the first bus's line as the feed
   sees it ("Ближайший сейчас: 13 мин" beside a scheduled 12:31 is the timetable
   and the road disagreeing today), and the map shows only the trip's buses.
-- **Stable under a thumb:** a "leave now" plan is redone every 30 s while shown,
+- **Stable under a thumb:** a plan is redone every 30 s while shown,
   the chosen option is tracked by its lines rather than its place in the list,
   and "me" moves only when the fix moves 50 m — the map watches the position
   every few seconds, and reshuffling the options for GPS jitter is worse than
@@ -895,7 +962,10 @@ prebuilt flow (`link --project <package.json name>` → `pull` → `build --prod
   surstromming it is one rewrite that only the deploy cares about. Here it
   declares the workspace build command, the SPA output directory *and* the
   serverless function that serves `/api` — that is project structure, and
-  `vercel dev` should see it too.
+  `vercel dev` should see it too. It also marks `/assets/*` immutable for a year:
+  those names carry a content hash, and Vercel's default — measured on
+  production — was `max-age=0, must-revalidate`, which asked again about every
+  chunk on every visit.
 - **Typecheck and tests gate the deploy**, in a `verify` job that also runs on
   pull requests (where it needs no token). A red suite should stop a release,
   not follow it.
@@ -963,13 +1033,15 @@ default, and the frontend is same-origin with the API so no CORS entry is needed
 
 ## Workflow
 
-- **The API and the journey planner are tested; the UI is not.** `npm test` runs
+- **The API, the journey planner and the address search are tested; the UI is
+  not.** `npm test` runs
   Node's built-in runner (`node --test`) in both workspaces — no framework, no
   config, no dependency, and it strips the TypeScript itself. Tests are
-  `*.test.ts` beside the code they cover. The planner is web code but it is the
-  same kind of code as the API's: whether a change of bus leaves time to make it
-  is invisible in a screenshot. So `apps/web/src/planner/` stays free of Vue and
-  the DOM, its relative imports carry `.ts` for Node, and `tsconfig.test.json`
+  `*.test.ts` beside the code they cover. The planner and the search are web
+  code but the same kind of code as the API's: whether a change of bus leaves
+  time to make it, or whether «Хилтон» finds the Hilton, is invisible in a
+  screenshot. So `apps/web/src/planner/` and `apps/web/src/places/` stay free of
+  Vue and the DOM, their relative imports carry `.ts` for Node, and `tsconfig.test.json`
   checks the tests with Node's types while the app's config excludes them.
   The UI stays manually verified in the browser over Chrome DevTools Protocol on
   port 9222, per surstromming's rule.

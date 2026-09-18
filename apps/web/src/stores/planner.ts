@@ -5,18 +5,25 @@ import type { TimetablePattern } from '@/api/types'
 import { metresBetween, type LatLon } from '@/planner/geo'
 import { buildPlannerNetwork } from '@/planner/network'
 import { planJourneys, type Journey, type PlanQuery, type PlanResult } from '@/planner/plan'
-import { minutesInBatumi, parseClock, upcoming } from '@/planner/time'
+import { minutesInBatumi } from '@/planner/time'
+import type { FoundPlace } from '@/places/search'
 import { useProximity } from '@/stores/proximity'
 import { useTransit } from '@/stores/transit'
 
-/** One end of a journey: where the reader is, a stop, or a point they tapped. */
-export type Place = { kind: 'me' } | { kind: 'stop'; stopId: string } | { kind: 'point'; lat: number; lon: number }
+/**
+ * One end of a journey: where the reader is, a stop, an address or named place
+ * found by search, or a point they tapped.
+ */
+export type Place =
+  | { kind: 'me' }
+  | { kind: 'stop'; stopId: string }
+  | { kind: 'place'; place: FoundPlace }
+  | { kind: 'point'; lat: number; lon: number }
 export type PlaceField = 'from' | 'to'
-export type WhenMode = 'now' | 'depart' | 'arrive'
 
 /**
- * How often a "leave now" plan is redone. The options change as buses leave, and
- * a plan made ten minutes ago recommends a bus that has gone.
+ * How often a plan is redone. The options change as buses leave, and a plan
+ * made ten minutes ago recommends a bus that has gone.
  */
 const REPLAN_MS = 30_000
 
@@ -42,9 +49,6 @@ export const usePlanner = defineStore('planner', () => {
 
   const from = ref<Place | null>(null)
   const to = ref<Place | null>(null)
-  const whenMode = ref<WhenMode>('now')
-  /** "HH:MM" in Batumi, for the two modes that name a time. */
-  const whenClock = ref('')
   /** Armed from a field's "choose on the map"; the next tap on the map answers it. */
   const picking = ref<PlaceField | null>(null)
   /** The option on the map, by its lines rather than its position in a list that re-sorts. */
@@ -95,6 +99,7 @@ export const usePlanner = defineStore('planner', () => {
   const pointOf = (place: Place | null): LatLon | null => {
     if (!place) return null
     if (place.kind === 'point') return { lat: place.lat, lon: place.lon }
+    if (place.kind === 'place') return { lat: place.place.lat, lon: place.place.lon }
     if (place.kind === 'stop') {
       const stop = transit.stopById.get(place.stopId)
       return stop ? { lat: stop.lat, lon: stop.lon } : null
@@ -132,19 +137,14 @@ export const usePlanner = defineStore('planner', () => {
     { immediate: true },
   )
 
-  const query = computed<PlanQuery | null>(() => {
-    if (!fromPoint.value || !toPoint.value) return null
-    const now = minutesInBatumi(clock.value)
-    if (whenMode.value === 'now') return { from: fromPoint.value, to: toPoint.value, at: now, mode: 'depart' }
-    const chosen = parseClock(whenClock.value)
-    if (chosen === null) return null
-    return {
-      from: fromPoint.value,
-      to: toPoint.value,
-      at: upcoming(chosen, now),
-      mode: whenMode.value === 'arrive' ? 'arrive' : 'depart',
-    }
-  })
+  // Always from now. A departure or arrival time was offered and taken out: the
+  // question at a kerb is "how do I get there from here, now", and a control
+  // nobody changes is a control everybody has to read past.
+  const query = computed<PlanQuery | null>(() =>
+    fromPoint.value && toPoint.value
+      ? { from: fromPoint.value, to: toPoint.value, at: minutesInBatumi(clock.value) }
+      : null,
+  )
 
   const result = computed<PlanResult | null>(() =>
     network.value && query.value ? planJourneys(network.value, query.value) : null,
@@ -156,7 +156,7 @@ export const usePlanner = defineStore('planner', () => {
   })
 
   // A different question is a different list: the old choice means nothing in it.
-  watch([from, to, whenMode, whenClock], () => {
+  watch([from, to], () => {
     selectedKey.value = null
     showSteps.value = false
   })
@@ -168,6 +168,11 @@ export const usePlanner = defineStore('planner', () => {
   }
 
   const setPlace = (field: PlaceField, place: Place | null) => {
+    // "My location" at both ends is a trip to nowhere: choosing it for one end
+    // moves it there rather than leaving it at the other as well.
+    const other = field === 'from' ? to : from
+    if (place?.kind === 'me' && other.value?.kind === 'me') other.value = null
+
     if (field === 'from') from.value = place
     else to.value = place
     picking.value = null
@@ -176,8 +181,9 @@ export const usePlanner = defineStore('planner', () => {
 
     // "How do I get there" is asked from here far more often than from anywhere
     // else — but only when the browser already lets us know where here is.
-    // Never a permission prompt the reader did not ask for.
-    if (field === 'to' && place && !from.value && proximity.permission === 'granted') {
+    // Never a permission prompt the reader did not ask for — and never when the
+    // destination *is* here, which used to make a trip from me to me.
+    if (field === 'to' && place && place.kind !== 'me' && !from.value && proximity.permission === 'granted') {
       from.value = { kind: 'me' }
       ensureFix()
     }
@@ -208,11 +214,6 @@ export const usePlanner = defineStore('planner', () => {
     if (picking.value) setPlace(picking.value, { kind: 'point', lat, lon })
   }
 
-  const setWhen = (mode: WhenMode, clockValue?: string) => {
-    whenMode.value = mode
-    if (clockValue !== undefined) whenClock.value = clockValue
-  }
-
   const selectJourney = (key: string) => {
     selectedKey.value = key
     showSteps.value = true
@@ -225,8 +226,6 @@ export const usePlanner = defineStore('planner', () => {
   return {
     from,
     to,
-    whenMode,
-    whenClock,
     picking,
     showSteps,
     timetable,
@@ -245,7 +244,6 @@ export const usePlanner = defineStore('planner', () => {
     arm,
     disarm,
     pickAt,
-    setWhen,
     selectJourney,
     backToOptions,
   }

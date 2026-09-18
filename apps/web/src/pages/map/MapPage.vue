@@ -144,8 +144,8 @@
 
             <div v-else-if="planState === 'nothing'" :class="$style.planState">
               <p :class="$style.planStateTitle">{{ locale.t(nothingKey) }}</p>
-              <!-- Another time can help a trip with no bus; it cannot put a stop
-                   near somewhere that has none. -->
+              <!-- Somewhere nearby can help a trip no bus makes; nothing helps an
+                   end with no stop anywhere near it, and the title says which. -->
               <p v-if="nothingKey === 'noJourney'">{{ locale.t("noJourneyDetail") }}</p>
             </div>
 
@@ -357,19 +357,24 @@ const selectStop = (id: string) => {
   selectedStopId.value = id;
 };
 
-// One end chosen, and it is a stop: its arrivals are the useful thing to show
-// while the other end is still being chosen — which is also what makes typing a
-// pole number into the planner the way to look a stop up. Both ends chosen: the
-// trip is the answer, and a stop left open over it would hide it.
+// One end chosen while the other is still being chosen. A stop — from its own
+// sheet's «Отсюда»/«Сюда» — keeps its arrivals open, since they are the useful
+// thing to show meanwhile. A place found by name is flown to, because where it
+// is, is the first thing to check about an address picked from a list. Both
+// ends chosen: the trip is the answer, and a stop left open over it would hide it.
 watch(
   () => [planner.from, planner.to] as const,
-  ([from, to]) => {
+  ([from, to], previous) => {
     if (from && to) {
       selectedStopId.value = null;
       return;
     }
     const only = from ?? to;
     if (only?.kind === "stop") selectedStopId.value = only.stopId;
+    // Only a place just chosen: not one left behind when the other end was
+    // cleared by typing over it, and not the same place moved by a swap.
+    const [oldFrom, oldTo] = previous ?? [];
+    if (only?.kind === "place" && only !== oldFrom && only !== oldTo) flyToPoint(only.place.lat, only.place.lon, 17);
   },
   { immediate: true },
 );

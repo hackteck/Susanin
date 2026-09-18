@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 import type { Route, Stop } from '@/api/types'
+import { useJourneyFormat, wholeMinutes } from '@/composables/useJourneyFormat'
 import { metresBetween } from '@/planner/geo'
 import { ACCESS_MAX_METRES } from '@/planner/plan'
 import { walkingMinutes } from '@/planner/walking'
@@ -37,6 +38,7 @@ export function useNearestStops(
 ): { entries: ComputedRef<NearestEntry[]> } {
   const transit = useTransit()
   const locale = useLocale()
+  const format = useJourneyFormat()
 
   const entries = computed<NearestEntry[]>(() => {
     const here = anchor.value
@@ -53,11 +55,8 @@ export function useNearestStops(
       .map((entry) => ({
         stop: entry.stop,
         metres: entry.metres,
-        distanceLabel:
-          entry.metres < 1000
-            ? `${Math.round(entry.metres / 10) * 10} ${locale.t('metresAway')}`
-            : `${(entry.metres / 1000).toFixed(1)} ${locale.t('kilometresAway')}`,
-        walkLabel: `${Math.max(1, Math.round(walkingMinutes(entry.metres)))} ${locale.t('walkMinutes')}`,
+        distanceLabel: format.distance(entry.metres),
+        walkLabel: `${wholeMinutes(walkingMinutes(entry.metres))} ${locale.t('walkMinutes')}`,
         routes: entry.stop.routeIds
           .map((id) => transit.routeById.get(id))
           .filter((route) => route !== undefined),

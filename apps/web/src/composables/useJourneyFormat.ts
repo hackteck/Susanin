@@ -1,8 +1,17 @@
+import { computed } from 'vue'
 import type { WalkLeg } from '@/planner/plan'
 import { clockLabel, isTomorrow } from '@/planner/time'
 import { useLocale } from '@/stores/locale'
+import { usePlaces } from '@/stores/places'
 import type { Place } from '@/stores/planner'
 import { useTransit } from '@/stores/transit'
+
+/**
+ * Whole minutes, rounded up: a trip that takes 36.2 minutes does not take 36.
+ * Shared with the list of stops nearby, which must not give the same walk a
+ * minute less than the planner does.
+ */
+export const wholeMinutes = (minutes: number) => Math.max(1, Math.ceil(minutes - 1e-9))
 
 /**
  * How a planned trip reads: its times, its durations, its walks. One place for
@@ -12,20 +21,26 @@ import { useTransit } from '@/stores/transit'
  */
 export function useJourneyFormat() {
   const locale = useLocale()
+  const places = usePlaces()
   const transit = useTransit()
 
-  /** An end of the trip as the fields name it: a stop by name and pole number. */
+  /** An end of the trip as the fields name it: a place by its name, a stop by name and pole number. */
   const place = (value: Place | null) => {
     if (!value) return ''
     if (value.kind === 'me') return locale.t('followMe')
-    if (value.kind === 'point') return locale.t('pointOnMap')
+    if (value.kind === 'place') return locale.name(value.place.name)
+    if (value.kind === 'point') {
+      // Named by the house or place under it, when there is one: "Point on the
+      // map → Point on the map" as a trip's title says nothing about the trip.
+      const there = places.at(value)
+      return there ? locale.name(there.name) : locale.t('pointOnMap')
+    }
     const stop = transit.stopById.get(value.stopId)
     return stop ? `${locale.name(stop.name)} · ${stop.code}` : ''
   }
 
-  /** Whole minutes, rounded up: a trip that takes 36.2 minutes does not take 36. */
   const duration = (minutes: number) => {
-    const whole = Math.max(1, Math.ceil(minutes - 1e-9))
+    const whole = wholeMinutes(minutes)
     if (whole < 60) return `${whole} ${locale.t('minutesShort')}`
     const rest = whole % 60
     const hours = `${Math.floor(whole / 60)} ${locale.t('hoursShort')}`
@@ -48,10 +63,17 @@ export function useJourneyFormat() {
   const span = (depart: number, arrive: number) =>
     duration(Math.ceil(arrive - 1e-9) - Math.floor(depart + 1e-9))
 
+  // «2,6 км», not «2.6 км»: Russian and Georgian write the decimal with a comma,
+  // and a full stop there reads as a typo in exactly the two languages most
+  // readers use.
+  const kilometres = computed(
+    () => new Intl.NumberFormat(locale.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+  )
+
   const distance = (metres: number) =>
     metres < 1000
       ? `${Math.max(10, Math.round(metres / 10) * 10)} ${locale.t('metresAway')}`
-      : `${(metres / 1000).toFixed(1)} ${locale.t('kilometresAway')}`
+      : `${kilometres.value.format(metres / 1000)} ${locale.t('kilometresAway')}`
 
   const walk = (leg: Pick<WalkLeg, 'metres' | 'minutes'>) => `${distance(leg.metres)} · ${duration(leg.minutes)}`
 

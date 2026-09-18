@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Stop, TimetablePattern } from '../api/types.ts'
 import { buildPlannerNetwork } from './network.ts'
-import { nearbyStops, planJourneys, type Journey, type PlanQuery, type RideLeg, type WalkLeg } from './plan.ts'
+import { nearbyStops, planJourneys, type Journey, type RideLeg, type WalkLeg } from './plan.ts'
 import { BOARDING_SLACK, TRANSFER_SLACK, search, trace } from './raptor.ts'
 import { walkingMinutes } from './walking.ts'
 import { metresBetween } from './geo.ts'
@@ -72,8 +72,7 @@ const near = (id: string) => {
   return { lat: found.lat + 0.0001, lon: found.lon + 0.0001 }
 }
 
-const plan = (from: string, to: string, at: number, mode: PlanQuery['mode'] = 'depart') =>
-  planJourneys(network, { from: near(from), to: near(to), at, mode })
+const plan = (from: string, to: string, at: number) => planJourneys(network, { from: near(from), to: near(to), at })
 
 const rides = (journey: Journey) => journey.legs.filter((leg): leg is RideLeg => leg.kind === 'ride')
 
@@ -144,20 +143,10 @@ test('after the last bus, the plan is for the first one tomorrow', () => {
   assert.equal(rides(best)[0]!.depart, 1440 + 420)
 })
 
-test('arrive-by leaves as late as still gets there in time', () => {
-  const { journeys } = plan('a0', 'a3', 540, 'arrive')
-  const best = journeys.find((journey) => journey.kind === 'transit')
-
-  assert.ok(best)
-  assert.ok(best.arrive <= 540, `arrives at ${best.arrive}`)
-  // The 08:50 reaches a3 at 08:59; the 09:00 would be nine minutes late.
-  assert.equal(rides(best)[0]!.depart, 530)
-})
-
 test('a destination a few steps away is a walk, and nothing else', () => {
   const from = near('a0')
   const to = { lat: from.lat + 0.001, lon: from.lon }
-  const { journeys } = planJourneys(network, { from, to, at: 480, mode: 'depart' })
+  const { journeys } = planJourneys(network, { from, to, at: 480 })
 
   assert.deepEqual(
     journeys.map((journey) => journey.kind),
@@ -192,7 +181,7 @@ test('somewhere with no stop close by still gets its nearest few', () => {
 })
 
 test('an end with no stop within reach is named, not silently empty', () => {
-  const result = planJourneys(network, { from: near('a0'), to: { lat: 41.9, lon: 41.9 }, at: 480, mode: 'depart' })
+  const result = planJourneys(network, { from: near('a0'), to: { lat: 41.9, lon: 41.9 }, at: 480 })
 
   assert.equal(result.noStopsNear, 'to')
   assert.deepEqual(result.journeys, [])
@@ -204,7 +193,7 @@ test('an option far worse than the best is not offered at all', () => {
     // Ninety minutes for what A and B do in forty.
     pattern('D', ['d0', 'd1', 'd2'], [0, 30, 90], [510]),
   ])
-  const { journeys } = planJourneys(slow, { from: near('a0'), to: near('b3'), at: 480, mode: 'depart' })
+  const { journeys } = planJourneys(slow, { from: near('a0'), to: near('b3'), at: 480 })
 
   assert.ok(!journeys.some((journey) => journey.key === 'D:1'))
 })
@@ -212,7 +201,7 @@ test('an option far worse than the best is not offered at all', () => {
 test('standing at the pole as the bus is due is not catching it', () => {
   // No walk at all, so only the boarding slack stands between 08:00 and 08:10.
   const at = stops.find((candidate) => candidate.id === 'a0')!
-  const { journeys } = planJourneys(network, { from: at, to: near('a3'), at: 480, mode: 'depart' })
+  const { journeys } = planJourneys(network, { from: at, to: near('a3'), at: 480 })
 
   assert.equal(rides(journeys.find((journey) => journey.kind === 'transit')!)[0]!.depart, 490)
 })
@@ -227,7 +216,6 @@ test('a connection two minutes after arriving is not one to plan on', () => {
     from: { lat: 41.64, lon: 41.6 },
     to: { lat: 41.66, lon: 41.62 },
     at: 470,
-    mode: 'depart',
   }).journeys.filter((journey) => journey.kind === 'transit')
 
   assert.deepEqual(rides(best!).map((leg) => leg.depart), [480, 512])

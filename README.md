@@ -33,7 +33,8 @@ The tests cover what is invisible when wrong: in the API, map-matching a bus to
 the right leg of its route, transliterating a name without leaving Georgian
 behind, publishing a countdown that counts down, repairing a timetable that has a
 bus doing 275 km/h; in the web app, the journey planner — whether a change of bus
-leaves time to make it. The API's run against the real upstream through
+leaves time to make it — and the address search, whether «Хилтон» finds the
+Hilton. The API's run against the real upstream through
 `app.fetch`, so there is no server to start — and they skip with a reason rather
 than failing when the fleet has stopped for the night.
 
@@ -46,18 +47,20 @@ there.
   showing which way it is pointing. Filter to the routes you care about.
 - **Arrival countdowns** that tick down second by second and never count up,
   with the scheduled time beside them.
-- **Directions**, like a map app's: from where you are, a stop or a point on the
-  map, to another — options with changes of bus, the walk to the stop and from
-  it, leave-now, depart-at or arrive-by, and the first bus's live position beside
+- **Directions**, like a map app's: from where you are, an address, a place, a
+  stop or a point on the map, to another — options leaving now, with changes of
+  bus, the walk to the stop and from it, and the first bus's live position beside
   its scheduled time. Planned on your phone, so where you are never leaves it,
   and it keeps working with no signal.
+- **Address search** in the same two fields: houses, streets, hotels,
+  pharmacies, villages — in Russian, Georgian or English, whichever you happen
+  to type — from OpenStreetMap, searched on your phone, with the last ten places
+  you chose one tap away.
 - **Nearby stops**, sorted by distance, with a walk time.
-- **Stop search** by the number on the pole or by name — in Russian, Georgian or
-  English, whichever you happen to type — in the same two fields.
 - **Sharing**: a page with the link, a QR code made at build time, and your
   phone's own share sheet.
-- **Timetables that work offline.** Install it, and the schedules, routes, stops
-  and trip planning keep working with no signal. Live positions do not, and the app says so
+- **Timetables that work offline.** Install it, and the schedules, routes, stops,
+  address search and trip planning keep working with no signal. Live positions do not, and the app says so
   rather than showing you a bus that is not there.
 - Russian, Georgian and English; light and dark.
 
@@ -148,6 +151,10 @@ So this app derives what the feed doesn't provide:
 - **Russian and English stop names**, harvested from OpenStreetMap's `name:ru`
   and `name:en` tags at build time (`tools/build-names.mjs`), with
   transliteration only for what OSM has never mapped.
+- **Addresses.** The feed knows stops, not houses, and no public geocoder
+  answers a Russian query about Batumi as you type, so the planner's address
+  table is OpenStreetMap's too — houses, streets and named places in three
+  languages, harvested by `tools/build-places.mjs` and searched on the device.
 
 And it does not pretend to have what nobody has: no per-weekday timetables (the
 source keeps one schedule for every day), no occupancy, no service alerts.
@@ -183,6 +190,6 @@ Please keep it that way.
 
 ## Credits
 
-Map tiles © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+Map tiles, stop names and addresses © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, ODbL.
 
 Copyright © 2026 Evgeniy Mnatsakanov. GPL-3.0-or-later — see [LICENSE](LICENSE).

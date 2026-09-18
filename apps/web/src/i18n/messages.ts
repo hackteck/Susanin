@@ -176,6 +176,8 @@ export const messages = {
   fromLabel: { ru: 'Откуда', ka: 'საიდან', en: 'From' },
   toLabel: { ru: 'Куда', ka: 'სადამდე', en: 'To' },
   chooseOnMap: { ru: 'Выбрать на карте', ka: 'რუკაზე არჩევა', en: 'Choose on the map' },
+  chooseOnMapCancel: { ru: 'Не выбирать на карте', ka: 'რუკაზე არჩევის გაუქმება', en: 'Stop choosing on the map' },
+  placesFailed: { ru: 'Не удалось загрузить адреса', ka: 'მისამართები ვერ ჩაიტვირთა', en: 'Could not load the addresses' },
   pointOnMap: { ru: 'Точка на карте', ka: 'წერტილი რუკაზე', en: 'Point on the map' },
   pickFromHint: {
     ru: 'Нажмите на карту, чтобы выбрать, откуда ехать',
@@ -188,10 +190,6 @@ export const messages = {
     en: 'Tap the map to choose where to go',
   },
   swapEnds: { ru: 'Поменять местами', ka: 'ადგილების გაცვლა', en: 'Swap start and destination' },
-  whenLabel: { ru: 'Когда', ka: 'როდის', en: 'When' },
-  leaveNow: { ru: 'Сейчас', ka: 'ახლა', en: 'Leave now' },
-  departAt: { ru: 'Отправление в', ka: 'გამგზავრება', en: 'Depart at' },
-  arriveBy: { ru: 'Прибыть к', ka: 'ჩასვლა', en: 'Arrive by' },
   walk: { ru: 'Пешком', ka: 'ფეხით', en: 'Walk' },
   tomorrow: { ru: 'завтра', ka: 'ხვალ', en: 'tomorrow' },
   alsoAt: { ru: 'Ещё в', ka: 'ასევე', en: 'Also at' },
@@ -199,9 +197,9 @@ export const messages = {
   hoursShort: { ru: 'ч', ka: 'სთ', en: 'h' },
   noJourney: { ru: 'Не нашли, как добраться', ka: 'გზა ვერ მოიძებნა', en: 'No way there found' },
   noJourneyDetail: {
-    ru: 'Попробуйте другое время или точку поблизости.',
-    ka: 'სცადეთ სხვა დრო ან ახლომდებარე წერტილი.',
-    en: 'Try another time, or a point nearby.',
+    ru: 'Попробуйте точку поблизости.',
+    ka: 'სცადეთ ახლომდებარე წერტილი.',
+    en: 'Try a point nearby.',
   },
   noStopsNearFrom: {
     ru: 'Рядом с началом пути нет остановок',

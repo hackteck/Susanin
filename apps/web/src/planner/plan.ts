@@ -38,16 +38,12 @@ const WORSE_ALLOWANCE = 10
 
 /** How many further searches look for options leaving later than the first ones. */
 const LATER_RUNS = 3
-/** How far back an arrive-by search looks for a departure. */
-const ARRIVE_BY_WINDOW = 240
 
 export interface PlanQuery {
   from: LatLon
   to: LatLon
-  /** Minutes after Batumi midnight today; past 1440 is tomorrow. */
+  /** Leave no earlier than this: minutes after Batumi midnight today; past 1440 is tomorrow. */
   at: number
-  /** Leave no earlier than `at`, or be there no later than it. */
-  mode: 'depart' | 'arrive'
 }
 
 export interface WalkLeg {
@@ -152,10 +148,8 @@ export function planJourneys(network: PlannerNetwork, query: PlanQuery): PlanRes
     }
   }
 
-  const candidates = query.mode === 'arrive' ? arriveBy(network, query, access, egress) : departAt(network, query, access, egress)
-  if (walk.walkMinutes <= WALK_ONLY_MAX_MINUTES && (query.mode === 'depart' || walk.arrive <= query.at)) {
-    candidates.push(walk)
-  }
+  const candidates = departAt(network, query, access, egress)
+  if (walk.walkMinutes <= WALK_ONLY_MAX_MINUTES) candidates.push(walk)
 
   const journeys = rank(candidates, query)
   const bestTimed = journeys.find((journey) => journey.kind === 'transit')
@@ -168,7 +162,7 @@ export function planJourneys(network: PlannerNetwork, query: PlanQuery): PlanRes
 
 function walkOnly(query: PlanQuery, straight: number): Journey {
   const minutes = walkingMinutes(straight)
-  const depart = query.mode === 'arrive' ? query.at - minutes : query.at
+  const depart = query.at
   const leg: WalkLeg = {
     kind: 'walk',
     fromStopId: null,
@@ -224,37 +218,6 @@ function departAt(network: PlannerNetwork, query: PlanQuery, access: Access[], e
     if (at > query.at + 1440) break
   }
 
-  return found
-}
-
-/**
- * The latest departure that still arrives in time, found by bisection. Earliest
- * arrival never gets earlier as the departure gets later, so it is monotone and
- * a binary search over the window is exact to the minute.
- */
-function arriveBy(network: PlannerNetwork, query: PlanQuery, access: Access[], egress: Access[]): Journey[] {
-  const deadline = query.at
-  const found: Journey[] = []
-
-  const probe = (at: number) => {
-    const batch = harvest(network, access, egress, at).filter((journey) => journey.arrive <= deadline)
-    found.push(...batch)
-    return batch.length > 0
-  }
-
-  let low = deadline - ARRIVE_BY_WINDOW
-  let high = deadline
-  if (!probe(low)) return found
-
-  while (high - low > 1) {
-    const middle = Math.floor((low + high) / 2)
-    if (probe(middle)) low = middle
-    else high = middle
-  }
-
-  // A couple of earlier starts, so the latest option is not the only one.
-  probe(low - 10)
-  probe(low - 20)
   return found
 }
 
@@ -348,12 +311,9 @@ function assemble(network: PlannerNetwork, raw: RawLeg[], exit: Access): Journey
   }
 }
 
-const cost = (journey: Journey, query: PlanQuery) => {
-  // Depart-at weighs how soon it gets you there; arrive-by, how late it lets
-  // you leave. Either way the time in between is the time the trip takes.
-  const elapsed = query.mode === 'arrive' ? query.at - journey.depart : journey.arrive - query.at
-  return elapsed + TRANSFER_PENALTY * Math.max(0, journey.rides - 1) + WALK_RELUCTANCE * journey.walkMinutes
-}
+/** How soon it gets you there, with changes and walking weighed in. */
+const cost = (journey: Journey, query: PlanQuery) =>
+  journey.arrive - query.at + TRANSFER_PENALTY * Math.max(0, journey.rides - 1) + WALK_RELUCTANCE * journey.walkMinutes
 
 const dominates = (a: Journey, b: Journey) =>
   a.depart >= b.depart &&
