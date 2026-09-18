@@ -45,6 +45,7 @@ there.
 
 - **A live map** of every bus running, with the route number on each and a nose
   showing which way it is pointing. Filter to the routes you care about.
+- **Where you are, and which way you are facing**, on phones with a compass.
 - **Arrival countdowns** that tick down second by second and never count up,
   with the scheduled time beside them.
 - **Directions**, like a map app's: from where you are, an address, a place, a
@@ -82,7 +83,7 @@ reach, and a static frontend otherwise ships happily over a broken API.
 
 It needs one secret, `VERCEL_TOKEN`, and no environment variables — set
 `SITE_URL` in the Vercel project only if the app moves to another address. Two settings
-worth reading `CLAUDE.md` about before changing: the function's `maxDuration`
+worth reading [`docs/deploy.md`](docs/deploy.md) about before changing: the function's `maxDuration`
 has to stay above `UPSTREAM_TIMEOUT_MS`, and the project's region should be set
 near Georgia rather than left at US East.
 
@@ -124,8 +125,8 @@ mobile app, giving the network, the timetables, and raw bus positions. This
 project reads it. There is no agreement, no API key and no published terms
 behind that access, which is the single most important thing to understand
 before depending on this app or forking it: **the source can change or close at
-any time, and it is not ours.** `CLAUDE.md` says where it is and how it was
-found.
+any time, and it is not ours.** [`docs/data-source.md`](docs/data-source.md)
+says where it is and how it was found.
 
 So this app derives what the feed doesn't provide:
 
@@ -162,9 +163,9 @@ So this app derives what the feed doesn't provide:
 And it does not pretend to have what nobody has: no per-weekday timetables (the
 source keeps one schedule for every day), no occupancy, no service alerts.
 
-`CLAUDE.md` records how the data source was found, what was ruled out, and why
-the upstream is called the way it is — read it before changing anything about
-how this app fetches.
+[`docs/data-source.md`](docs/data-source.md) records how the data source was
+found, what was ruled out, and why the upstream is called the way it is — read
+it before changing anything about how this app fetches.
 
 ## Load discipline
 

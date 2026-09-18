@@ -8,7 +8,7 @@ aliased. It talks only to our own `/api`, never upstream.
 ```bash
 npm run dev --workspace @susanin/web     # :5173, proxies /api to :8787
 npm run build --workspace @susanin/web   # vue-tsc -b && vite build
-npm test --workspace @susanin/web        # node --test — the journey planner and the address search
+npm test --workspace @susanin/web        # node --test — the planner, the address search and the compass
 ```
 
 Run `npm run basemap` first on a fresh clone — the map tiles are generated, not
@@ -57,13 +57,14 @@ nor a search sent anywhere.
 | `planner/*` | **the journey planner** — lines as chains of stops timed by distance, the walking model, ranking; plain TypeScript, tested with `node --test` |
 | `stores/places.ts` | the address table, fetched the first time a trip field is focused, and the ten recent places |
 | `places/*` | **the address search** — the OSM table `tools/build-places.mjs` bakes, and how a query finds a house in it; plain TypeScript, tested the same way |
+| `sensors/*` | **the compass** — which way the phone faces, from orientation events; plain TypeScript, tested the same way |
 | `stores/sidebar.ts`, `stores/locale.ts`, `stores/toasts.ts` | app-wide UI state |
 | `pages/*` | one folder per page, each with its own route module, lazy-loaded |
 | `components/map/TransitMap.vue` | **the only file that imports Leaflet** |
 | `components/map/archives.ts` | basemap archives in IndexedDB, validated against the build's sha256 |
 | `components/*` | arrival board, route filter, journey planner fields and results, chips, rows |
 | `pages/share/SharePage.vue` + `vite.site.ts` | the Share page, and the build step that makes its QR code from `SITE_URL` |
-| `composables/*` | arrivals polling, geolocation, the shared one-second clock, theme |
+| `composables/*` | arrivals polling, geolocation, the compass, the shared one-second clock, theme |
 | `i18n/messages.ts` | every UI string in three locales, plus counted nouns |
 | `styles/_motion.scss` | motion tokens, and the list of what must **not** animate |
 
@@ -102,12 +103,12 @@ nor a search sent anywhere.
   192 KB is not for every visitor), and live positions and arrivals are
   deliberately **never** cached — a cached bus is worse than no bus, because it
   looks current.
-- **The UI is not unit-tested; the journey planner and the address search
-  are.** The UI is verified in the browser over the Chrome DevTools Protocol, per
+- **The UI is not unit-tested; the journey planner, the address search and
+  the compass are.** The UI is verified in the browser over the Chrome DevTools Protocol, per
   surstromming's rule: what a screenshot shows — hierarchy, colour, motion — is
   where its value is. Whether a bus that turns at its terminal can be ridden
   through it, or whether «Хилтон» finds the Hilton, is not in any screenshot, so
-  `planner/` and `places/` stay free of Vue and the DOM and run under `node --test`, with
+  `planner/`, `places/` and `sensors/` stay free of Vue and the DOM and run under `node --test`, with
   `tsconfig.test.json` checking the tests against Node's types.
 - **A trip is the map's business, not the URL's.** `stores/planner.ts` holds the
   two ends and plans by where the lines go, with each option's next bus from the
@@ -131,5 +132,5 @@ Attribution is shown in the app, not only here: the Leaflet control credits
 Protomaps and OpenStreetMap, and the About page carries a "where the data comes
 from" section in all three languages.
 
-The *why* behind all of the above lives in the root `CLAUDE.md`; this file is
-the map of where things are.
+The *why* behind all of the above lives in [`docs/`](../../docs/README.md); this
+file is the map of where things are.

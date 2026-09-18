@@ -11,7 +11,7 @@ npm run typecheck --workspace @susanin/api
 
 Node strips the TypeScript itself (`--experimental-strip-types`), which is why
 relative imports carry a `.ts` extension. They are load-bearing — see the
-`tsconfig` notes in the root `CLAUDE.md` before changing them.
+`tsconfig` notes in [`docs/deploy.md`](../../docs/deploy.md) before changing them.
 
 ## The request path
 
@@ -87,8 +87,8 @@ This project is unaffiliated with Batumi City Hall or any operator.
   (`inferDirection`), not read from the field. Reading it as documented puts nine
   buses in ten on the wrong leg.
 - **Arrival times are ours**, derived from position along the shape. They are
-  estimates, labelled as such, and five rules keep them honest — read the
-  arrivals section of the root `CLAUDE.md` before touching them.
+  estimates, labelled as such, and five rules keep them honest — read
+  [`docs/arrivals.md`](../../docs/arrivals.md) before touching them.
 - **Some published times are impossible**, and are repaired when the network is
   built: a pattern averaging over 45 km/h is re-derived from distance, and any
   stretch faster than 60 km/h is pushed later. The repair is written back into

@@ -35,7 +35,7 @@ export const config = {
    * The Batumi feed's origin. The community Cloudflare Worker
    * (https://bus-proxy.raf003771.workers.dev) mirrors the same two endpoints and
    * is the emergency fallback — it is one person's free-tier account, so it is
-   * never the default. See CLAUDE.md.
+   * never the default. See docs/data-source.md.
    */
   upstreamBase: process.env.UPSTREAM_BASE ?? 'https://thetamaps.site:54321',
 
