@@ -4,18 +4,10 @@
  * it: a beam pointing the wrong way looks exactly as confident as a right one,
  * and nothing about it shows up in a screenshot.
  *
- * Every heading here is degrees clockwise from north, in [0, 360).
+ * Every heading here is degrees clockwise from north as the phone reports it,
+ * in [0, 360). That is magnetic north on both platforms, and it is passed
+ * through: see docs/compass.md for why the declination correction came out.
  */
-
-/**
- * Magnetic declination over the network, from the World Magnetic Model
- * (WMM-2025, for 2026.7): 6.89° E at the southern corner of the box and 6.97° E
- * at the northern, drifting 0.02° a year. Both platforms report *magnetic*
- * north — iOS hands over CoreLocation's `magneticHeading`, and Android's rotation
- * vector is referenced to magnetic north — while the map is drawn to true north.
- * One constant is right because the map cannot leave Batumi.
- */
-export const DECLINATION_DEG = 6.9
 
 /** The fields of a `DeviceOrientationEvent` this reads, so the maths never sees the DOM. */
 export interface OrientationReading {
@@ -100,7 +92,7 @@ export function facing(alpha: number, beta: number, gamma: number, screenAngle =
 }
 
 /**
- * True heading from one orientation event, or null when the event carries none.
+ * The heading from one orientation event, or null when the event carries none.
  *
  * iOS never reports an absolute alpha — its frame starts wherever the phone was
  * — but it does report `webkitCompassHeading`, already tilt-compensated by
@@ -115,11 +107,10 @@ export function readHeading(reading: OrientationReading, screenAngle = 0): numbe
   if (typeof compass === 'number' && Number.isFinite(compass)) {
     // A negative accuracy is iOS saying it has no heading, not a small error.
     if (typeof reading.webkitCompassAccuracy === 'number' && reading.webkitCompassAccuracy < 0) return null
-    return normalise(compass + screenAngle + DECLINATION_DEG)
+    return normalise(compass + screenAngle)
   }
 
   const { alpha, beta, gamma } = reading
   if (!reading.absolute || alpha === null || beta === null || gamma === null) return null
-  const magnetic = facing(alpha, beta, gamma, screenAngle)
-  return magnetic === null ? null : normalise(magnetic + DECLINATION_DEG)
+  return facing(alpha, beta, gamma, screenAngle)
 }

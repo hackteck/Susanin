@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DECLINATION_DEG, easeBearing, facing, readHeading, shortestTurn } from './compass.ts'
+import { easeBearing, facing, readHeading, shortestTurn } from './compass.ts'
 
 /** Degrees apart round the circle, so 359° and 1° are 2 apart rather than 358. */
 const apart = (a: number, b: number) => Math.abs(shortestTurn(a, b))
@@ -59,9 +59,12 @@ test('a pose that names no direction is null, not north', () => {
   assert.equal(facing(0, 135, 0), null)
 })
 
-test('an absolute Android reading is turned from magnetic to true north', () => {
-  close(readHeading({ alpha: 0, beta: 0, gamma: 0, absolute: true }), DECLINATION_DEG)
-  close(readHeading({ alpha: 0, beta: 0, gamma: 0, absolute: true }, 90), 90 + DECLINATION_DEG)
+// Nothing is added to what the sensors say, declination included — see
+// docs/compass.md. This is the guard on that: it goes red the moment a constant
+// creeps back in, whoever is sure it belongs.
+test('an absolute Android reading is passed through as the sensors report it', () => {
+  close(readHeading({ alpha: 0, beta: 0, gamma: 0, absolute: true }), 0)
+  close(readHeading({ alpha: 0, beta: 0, gamma: 0, absolute: true }, 90), 90)
 })
 
 test('a relative reading carries no heading', () => {
@@ -70,11 +73,11 @@ test('a relative reading carries no heading', () => {
   assert.equal(readHeading({ alpha: null, beta: null, gamma: null, absolute: true }), null, 'no sensor')
 })
 
-test('an iOS reading uses the compass heading, turned for the screen and for true north', () => {
+test('an iOS reading uses the compass heading, turned for the screen and nothing else', () => {
   // iOS alpha is relative and must be ignored; the compass heading is not.
   const ios = { alpha: 123, beta: 0, gamma: 0, absolute: false, webkitCompassHeading: 355, webkitCompassAccuracy: 10 }
-  close(readHeading(ios), 355 + DECLINATION_DEG - 360)
-  close(readHeading(ios, 90), 355 + 90 + DECLINATION_DEG - 360)
+  close(readHeading(ios), 355)
+  close(readHeading(ios, 90), 355 + 90 - 360)
   assert.equal(readHeading({ ...ios, webkitCompassAccuracy: -1 }), null, 'iOS says it has no heading')
 })
 

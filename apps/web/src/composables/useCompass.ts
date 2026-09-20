@@ -27,7 +27,7 @@ const permissionRequest = (): PermissionRequest | undefined => {
 const screenAngle = () => screen.orientation?.angle ?? window.orientation ?? 0
 
 /**
- * Which way the reader is facing, as a true bearing — null until a real reading
+ * Which way the reader is facing, as the phone's own bearing — null until a real reading
  * arrives, and it never arrives on a device with no compass, which is how a
  * desktop ends up drawing no beam rather than one pointing north.
  *

@@ -95,7 +95,7 @@ const props = withDefaults(
     userPosition?: MapUser | null;
     /** Dims the dot: the fix is old enough that it may no longer be true. */
     userStale?: boolean;
-    /** Which way the reader is facing, degrees clockwise from true north; null draws no beam. */
+    /** Which way the reader is facing, degrees clockwise from north; null draws no beam. */
     userHeading?: number | null;
     /** Armed for a point pick — the next tap on the map means "here". */
     picking?: boolean;

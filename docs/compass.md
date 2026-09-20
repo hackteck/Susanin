@@ -17,10 +17,16 @@ tap. If the reader refuses, only the beam is lost.
 
 ## Traps
 
-- **Both platforms report magnetic north, and the map is drawn to true north.**
-  We add 6.9°, which is Batumi's declination (WMM-2025; it drifts by about
-  0.02° a year). Some articles say iOS is already true north. WebKit's source
-  says it is `magneticHeading`.
+- **Nothing is added to the reading, declination included.** Both platforms
+  report magnetic north — WebKit hands over CoreLocation's `magneticHeading`
+  rather than its `trueHeading`, and Android's rotation vector is referenced to
+  magnetic north — while the map is drawn to true north, so Batumi's 6.9°
+  (WMM-2025, drifting about 0.02° a year) used to be added on both paths. It
+  came out on a report of the beam reading shifted on an iPhone. Either way the
+  correction was below what the sensor can tell: 6.9° is well inside the tens of
+  degrees a phone compass is off by beside a railing, which is the same reason
+  the beam is a wide wedge and not an arrow. `compass.test.ts` guards its
+  absence, so put it back only with a measurement that shows it helps.
 - **Don't use `360 − alpha`.** It works while the phone lies flat. It goes
   wrong when the phone is held upright to look down a street. We compute the
   heading from the full rotation instead.
