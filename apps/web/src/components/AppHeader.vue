@@ -1,8 +1,21 @@
 <template>
   <Header>
-    <Button variant="ghost" size="icon" :aria-label="locale.t('toggleSidebar')" @click="sidebar.toggle">
-      <Icon :icon="PanelLeft" />
+    <!-- The three lines, not a panel glyph: readers did not recognise the panel
+         as something to press. `data-tour` is how the first-visit hint and the
+         tour find it — see docs/onboarding.md. -->
+    <Button
+      variant="ghost"
+      size="icon"
+      data-tour="menu"
+      :class="{ [$style.isHinted]: onboarding.ringMenu }"
+      :aria-label="locale.t('menu')"
+      :title="locale.t('menu')"
+      @click="sidebar.toggle"
+    >
+      <Icon :icon="Menu" />
     </Button>
+
+    <MenuHint />
 
     <RouterLink to="/" :class="$style.brand">
       <Icon :icon="BusFront" :size="20" />
@@ -27,18 +40,21 @@
 <script setup lang="ts">
 import { computed, useCssModule } from "vue";
 import { RouterLink } from "vue-router";
-import { BusFront, Moon, PanelLeft, Sun } from "lucide";
+import { BusFront, Menu, Moon, Sun } from "lucide";
 import { Button } from "@surstromming/button";
 import { Header } from "@surstromming/header";
 import { Icon } from "@surstromming/icon";
 import LocaleMenu from "@/components/LocaleMenu.vue";
+import MenuHint from "@/components/onboarding/MenuHint.vue";
 import { useSidebar } from "@/stores/sidebar";
 import { useLocale } from "@/stores/locale";
+import { useOnboarding } from "@/stores/onboarding";
 import { useTransit } from "@/stores/transit";
 import { useTheme } from "@/composables/useTheme";
 
 const sidebar = useSidebar();
 const locale = useLocale();
+const onboarding = useOnboarding();
 const transit = useTransit();
 const { theme, toggle: toggleTheme } = useTheme();
 
@@ -69,6 +85,19 @@ const statusClasses = computed(() => [
 
 <style module lang="scss">
 @use "@surstromming/design" as design;
+
+/**
+ * The first-visit highlight on a phone, where this button is the only way to
+ * the routes, the planner and the filter. A static ring and not a pulse: the
+ * one looping animation the app allows is the live one (see _motion.scss), and
+ * a second heartbeat in the corner would compete with it.
+ */
+.isHinted {
+  background-color: design.color(accent);
+  box-shadow:
+    0 0 0 2px design.color(primary),
+    0 0 0 5px design.with-alpha(primary, 20%);
+}
 
 .brand {
   display: flex;

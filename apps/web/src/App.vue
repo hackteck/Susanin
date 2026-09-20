@@ -19,6 +19,11 @@
     </Suspense>
   </RouterView>
 
+  <!-- The first visit: the offer, and the tour it can lead to. Both live here
+       because the tour rings the header, the sidebar and the map in turn. -->
+  <WelcomeDialog />
+  <TourSpotlight />
+
   <!-- Teleported to <body>; one for the whole app -->
   <Toaster :toasts="toasts.items" @dismiss="toasts.dismiss" />
 </template>
@@ -30,6 +35,8 @@ import { Toaster } from "@surstromming/toast";
 import AppError from "@/components/AppError.vue";
 import AppHeader from "@/components/AppHeader.vue";
 import PageLoader from "@/components/PageLoader.vue";
+import TourSpotlight from "@/components/onboarding/TourSpotlight.vue";
+import WelcomeDialog from "@/components/onboarding/WelcomeDialog.vue";
 import { ApiError } from "@/api/client";
 import { useToasts } from "@/stores/toasts";
 

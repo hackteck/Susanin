@@ -93,6 +93,8 @@ because a map handles its own gestures.
   go through `Intl.PluralRules` and numbers through `Intl.NumberFormat`. See
   [names.md](docs/names.md).
 - A direction is shown as `→ terminal`, never as outbound or inbound.
+- A first visit is offered a quick tour, and on a phone the menu button is
+  highlighted until it has been used. See [onboarding.md](docs/onboarding.md).
 
 If a surstromming package has a bug: flag it, add `../surstromming/packages/*` to
 this repo's root `workspaces`, fix it there, re-verify against the source, and

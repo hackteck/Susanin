@@ -59,6 +59,7 @@ nor a search sent anywhere.
 | `places/*` | **the address search** — the OSM table `tools/build-places.mjs` bakes, and how a query finds a house in it; plain TypeScript, tested the same way |
 | `sensors/*` | **the compass** — which way the phone faces, from orientation events; plain TypeScript, tested the same way |
 | `stores/sidebar.ts`, `stores/locale.ts`, `stores/toasts.ts` | app-wide UI state |
+| `stores/onboarding.ts`, `components/onboarding/*` | **the first visit** — the offer, the four-stop tour, and the ring on the menu button |
 | `pages/*` | one folder per page, each with its own route module, lazy-loaded |
 | `components/map/TransitMap.vue` | **the only file that imports Leaflet** |
 | `components/map/archives.ts` | basemap archives in IndexedDB, validated against the build's sha256 |

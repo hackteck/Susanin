@@ -19,6 +19,7 @@ ruled out, and the traps. Read the one for the area you are about to change.
 | [android.md](android.md) | The Capacitor build |
 | [deploy.md](deploy.md) | Vercel, and the settings that broke it |
 | [sharing.md](sharing.md) | The share page and its QR code |
+| [onboarding.md](onboarding.md) | The first visit: the menu button, the offer, and the tour |
 
 A new finding goes in the matching doc, in a few plain sentences. If no doc
 matches, start a new small one and add it here.

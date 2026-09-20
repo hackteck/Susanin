@@ -2,9 +2,10 @@
   <Sidebar v-model:open="sidebar.open">
     <SidebarGroup :items="navItems" @select="navigate" />
     <Separator />
-    <JourneyPlanner />
+    <!-- `data-tour` is what the first-visit tour rings — see docs/onboarding.md -->
+    <JourneyPlanner data-tour="planner" />
     <Separator />
-    <RouteFilter />
+    <RouteFilter data-tour="filter" />
   </Sidebar>
 </template>
 

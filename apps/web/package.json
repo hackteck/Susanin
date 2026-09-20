@@ -15,6 +15,7 @@
     "@surstromming/alert": "^0.1.0",
     "@surstromming/button": "^0.1.0",
     "@surstromming/design": "^0.1.2",
+    "@surstromming/dialog": "^0.1.6",
     "@surstromming/dropdown-menu": "^0.1.7",
     "@surstromming/header": "^0.1.0",
     "@surstromming/icon": "^0.1.0",

@@ -46,6 +46,7 @@
       <Button
         variant="secondary"
         size="icon"
+        data-tour="locate"
         :aria-label="locale.t(locateLabel)"
         :title="locateTitle"
         :disabled="proximity.locating"

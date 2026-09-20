@@ -4,6 +4,10 @@
       <header :class="$style.head">
         <h1 :class="$style.title">{{ locale.t("appName") }}</h1>
         <p :class="$style.subtitle">{{ locale.t("tagline") }}</p>
+        <!-- The way back for anyone who waved the first-visit offer away. -->
+        <Button variant="outline" size="sm" :class="$style.tour" @click="showTour">
+          {{ locale.t("quickTour") }}
+        </Button>
       </header>
 
       <section v-for="section in sections" :key="section.heading" :class="$style.section">
@@ -26,10 +30,20 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { Button } from "@surstromming/button";
 import { ScrollArea } from "@surstromming/scroll-area";
+import { router } from "@/router";
 import { useLocale } from "@/stores/locale";
+import { useOnboarding } from "@/stores/onboarding";
 
 const locale = useLocale();
+const onboarding = useOnboarding();
+
+// The tour's last stop is a control on the map, so it runs there or nowhere.
+const showTour = async () => {
+  await router.push("/");
+  onboarding.startTour();
+};
 
 // Kept as data so the three languages sit side by side and none drifts.
 const copy = {
@@ -133,6 +147,11 @@ const sections = computed(() => copy[locale.locale]);
 
 .subtitle {
   color: design.color(muted-foreground);
+}
+
+.tour {
+  align-self: flex-start;
+  margin-top: design.spacing(2);
 }
 
 .section {

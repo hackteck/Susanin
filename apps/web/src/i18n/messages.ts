@@ -257,8 +257,51 @@ export const messages = {
     en: 'The code prints well — for a bus stop, say, or a hotel front desk.',
   },
 
+  // The first visit. The offer is made once; the tour is four stops around the
+  // furniture a reader cannot find on their own — see docs/onboarding.md.
+  firstTimeHere: { ru: 'Первый раз здесь?', ka: 'პირველად ხართ აქ?', en: 'First time here?' },
+  firstTimeLead: {
+    ru: 'За минуту покажем, где что лежит. Или осмотритесь сами — тур можно открыть позже со страницы «О проекте».',
+    ka: 'ერთ წუთში გაჩვენებთ, სად რა არის. ან თავად დაათვალიერეთ — ტური მოგვიანებით გვერდიდან „პროექტის შესახებ“ გაიხსნება.',
+    en: 'A minute to show you where things are. Or look around on your own — the tour is on the About page whenever you want it.',
+  },
+  quickTour: { ru: 'Быстрый тур', ka: 'სწრაფი ტური', en: 'Quick tour' },
+  onMyOwn: { ru: 'Осмотрюсь сам', ka: 'თავად დავათვალიერებ', en: 'I’ll look around' },
+
+  menu: { ru: 'Меню', ka: 'მენიუ', en: 'Menu' },
+  // The hint under the highlighted button on a phone. It names what is behind
+  // the button, because "menu" is what the reader already failed to guess.
+  menuHint: {
+    ru: 'Маршруты, «как добраться» и остановки рядом — здесь',
+    ka: 'მარშრუტები, „როგორ მივიდე“ და ახლომდებარე გაჩერებები — აქ',
+    en: 'Routes, directions and the stops near you are in here',
+  },
+
+  tourMenuBody: {
+    ru: 'Панель со всем остальным открывается этой кнопкой — и закрывается ею же.',
+    ka: 'პანელი დანარჩენით ამ ღილაკით იხსნება — და იმავეთი იხურება.',
+    en: 'This button opens the panel with everything else in it — and closes it again.',
+  },
+  tourPlannerBody: {
+    ru: 'Впишите адрес или выберите точку на карте — подберём автобусы, пересадки и дорогу пешком.',
+    ka: 'ჩაწერეთ მისამართი ან აირჩიეთ წერტილი რუკაზე — შევარჩევთ ავტობუსებს, გადაჯდომებს და ფეხით გზას.',
+    en: 'Type an address or pick a point on the map — we find the buses, the changes and the walk.',
+  },
+  tourFilterBody: {
+    ru: 'Нажмите номер, чтобы оставить на карте только его. Без выбора видны все маршруты.',
+    ka: 'დააჭირეთ ნომერს, რომ რუკაზე მხოლოდ ის დარჩეს. არჩევის გარეშე ყველა მარშრუტი ჩანს.',
+    en: 'Tap a number to leave only that line on the map. With none picked, every route shows.',
+  },
+  tourLocateBody: {
+    ru: 'Карта перейдёт к вам, а «Рядом» покажет ближайшие остановки и время до автобуса.',
+    ka: 'რუკა თქვენს მდებარეობაზე გადავა, „ჩემთან ახლოს“ კი უახლოეს გაჩერებებს და ავტობუსის დროს აჩვენებს.',
+    en: 'The map jumps to where you are, and Nearby lists the closest stops with the next bus.',
+  },
+  tourNext: { ru: 'Далее', ka: 'შემდეგი', en: 'Next' },
+  tourFinish: { ru: 'Готово', ka: 'მზადაა', en: 'Done' },
+  tourSkip: { ru: 'Пропустить', ka: 'გამოტოვება', en: 'Skip' },
+
   toggleTheme: { ru: 'Сменить тему', ka: 'თემის შეცვლა', en: 'Toggle theme' },
-  toggleSidebar: { ru: 'Показать панель', ka: 'პანელის ჩვენება', en: 'Toggle sidebar' },
   language: { ru: 'Язык', ka: 'ენა', en: 'Language' },
   followMe: { ru: 'Моё местоположение', ka: 'ჩემი მდებარეობა', en: 'My location' },
 } as const satisfies Record<string, Record<Locale, string>>
