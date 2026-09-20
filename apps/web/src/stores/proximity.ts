@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useGeolocation, type GeoPermission, type Position } from '@/composables/useGeolocation'
+import { useOnboarding } from '@/stores/onboarding'
 
 /**
  * Where a stop was chosen from, when that was the list of stops near the reader.
@@ -30,6 +31,7 @@ export const COARSE_ABOVE_M = 300
  */
 export const useProximity = defineStore('proximity', () => {
   const geo = useGeolocation()
+  const onboarding = useOnboarding()
 
   const fix = ref<Position | null>(null)
   const permission = ref<GeoPermission>('unknown')
@@ -59,30 +61,90 @@ export const useProximity = defineStore('proximity', () => {
   }
 
   /**
-   * Probe permission and, only when it is already granted, take one quiet fix.
-   * Never on `prompt`: a permission dialog nobody asked for, on page load, is
-   * how an app teaches people to press Block.
+   * Whether the app may ask the browser where the reader is, unprompted.
+   *
+   * Two conditions, and both are about not interrupting. The reader has already
+   * said yes — `granted` is the plain answer, and a fix in hand is the other
+   * one, the only yes Safari ever gives us, since it will not report geolocation
+   * permission at all but hands over coordinates only after one. And the first
+   * visit has finished talking: while the offer or the tour is up, the reader is
+   * being shown the app rather than using it, and nothing goes looking for them.
+   *
+   * A press of the locate control is not covered by any of this. That is the
+   * reader asking, and it is the only thing allowed to raise the dialog.
    */
-  const init = async () => {
-    if (permission.value !== 'unknown') return
-    permission.value = await geo.queryPermission()
-    if (permission.value !== 'granted' || fix.value) return
+  const mayLocate = computed(
+    () => !onboarding.talking && (permission.value === 'granted' || !!fix.value),
+  )
+
+  /** Probed once, and the quiet fix taken once, however many pages ask. */
+  let probed = false
+  let booted = false
+
+  const bootFix = () => {
+    // Never on `prompt`: a permission dialog nobody asked for, on page load, is
+    // how an app teaches people to press Block.
+    if (booted || fix.value || !mayLocate.value) return
+    booted = true
     // Coarse on the boot fix — it is answered from the cached network position
     // in about a second, where a GPS lock would hold the page in "locating…".
     locate({ silent: true, highAccuracy: false })
   }
 
+  /**
+   * Probe permission — `permissions.query` asks the browser, not the reader —
+   * and take the quiet fix that a yes already given has earned.
+   */
+  const init = async () => {
+    if (!probed) {
+      probed = true
+      permission.value = await geo.queryPermission()
+    }
+    bootFix()
+  }
+
+  // Held rather than dropped: the offer and the tour both end on the map, which
+  // is where that fix was wanted in the first place.
+  watch(mayLocate, (may) => {
+    if (may) bootFix()
+  })
+
   let watchers = 0
   let stopWatch: (() => void) | undefined
+  let stopGate: (() => void) | undefined
 
-  /** Ref-counted exactly like the vehicle poll: two pages must not race one watchId. */
+  /**
+   * Ref-counted exactly like the vehicle poll: two pages must not race one
+   * watchId — and held behind `mayLocate`, because `watchPosition` raises the
+   * permission dialog exactly as `getCurrentPosition` does. Starting one with
+   * the map put that dialog on screen unasked, on a first visit, on top of the
+   * welcome offer: a question about a control the reader had not been shown
+   * yet, and the answer to that is Block. A watch follows a yes, it never asks
+   * for one — the locate control does the asking, and this starts itself the
+   * moment the fix that press returns lands.
+   */
   const watchPosition = () => {
     watchers++
-    if (watchers === 1) stopWatch = geo.watch()
+    if (watchers === 1) {
+      stopGate = watch(
+        mayLocate,
+        (yes) => {
+          if (yes === !!stopWatch) return
+          if (yes) stopWatch = geo.watch()
+          else {
+            stopWatch?.()
+            stopWatch = undefined
+          }
+        },
+        { immediate: true },
+      )
+    }
 
     return () => {
       watchers--
       if (watchers > 0) return
+      stopGate?.()
+      stopGate = undefined
       stopWatch?.()
       stopWatch = undefined
     }

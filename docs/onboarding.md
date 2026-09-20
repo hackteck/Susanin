@@ -33,6 +33,12 @@ been used. `stores/onboarding.ts` holds all of it;
   is behind a button is not the same as having found it. Only the ring is
   persisted (`menu-used`); the dismissal is not, so someone who closes the
   sentence in their first second is not left with an unexplained ring for ever.
+- **Nobody else talks while the offer is up.** The first thing a reader saw was
+  not the offer but the browser's own geolocation dialog sitting on top of it,
+  asking about a control they had not been shown yet — and the answer to a
+  question like that is Block. Every automatic fix now waits behind
+  `onboarding.talking`, which `stores/proximity.ts` reads. Only a press of the
+  locate control may raise the dialog.
 - **The bubble is on the map only, the ring is everywhere.** A callout under the
   header covers the top of whatever is behind it — on the About page it sat
   squarely over the page's own title.
@@ -62,6 +68,15 @@ been used. `stores/onboarding.ts` holds all of it;
   the ring is what separates here. The tint is a fixed neutral for the reason
   `@surstromming/backdrop` gives: a scrim that changed colour with the theme
   would stop reading as "the lights went down".
+- **`watchPosition` prompts, exactly as `getCurrentPosition` does.** The map
+  starts a live watch on setup, and that was the call behind the dialog above:
+  measured on a cleared first visit, it went out at 441 ms, before the app's own
+  one-shot fix and with the offer on screen. A watch now follows a yes rather
+  than asking for one. Checking `permission` is not enough on its own — Safari
+  will not report geolocation permission at all — so a fix already in hand
+  counts as the yes.
 - **Resetting it** for a look: clear `welcome-seen` and `menu-used` from
   `localStorage`. The About page also has a "Quick tour" button, which is the
-  only way back for a reader who waved the offer away.
+  only way back for a reader who waved the offer away. Resetting the *permission*
+  as well takes the site's own entry in the browser's settings; without that,
+  the fix arrives quietly and the dialog never appears either way.

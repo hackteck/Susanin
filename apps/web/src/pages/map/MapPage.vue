@@ -255,7 +255,9 @@ onUnmounted(stopWatching);
 
 // The map is the one screen where a live dot earns its battery: it is a claim
 // rendered beside a live bus, and the decision it supports is made while
-// walking. The watch stops with the page and pauses with the tab.
+// walking. The watch stops with the page, pauses with the tab, and does not
+// begin at all until the reader has asked to be located — asking here is what
+// put a permission dialog over the welcome offer.
 const stopLocating = proximity.watchPosition();
 onUnmounted(stopLocating);
 

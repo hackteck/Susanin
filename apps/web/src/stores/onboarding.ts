@@ -60,6 +60,14 @@ export const useOnboarding = defineStore('onboarding', () => {
   const stepCount = steps.length
 
   /**
+   * The first visit still has the floor: the offer is on screen, or the tour is
+   * walking the reader round. Anything else that would talk over it holds off
+   * until this is false — including the browser's own dialogs, which is why
+   * `stores/proximity.ts` reads it.
+   */
+  const talking = computed(() => welcomeOpen.value || running.value)
+
+  /**
    * The ring on the menu button. Phones only, and that is the whole reason for
    * it: there the panel is a drawer, so a reader who never presses the button
    * never sees the routes, the planner or the filter at all. On a desktop the
@@ -68,9 +76,7 @@ export const useOnboarding = defineStore('onboarding', () => {
    * Not while the offer or the tour is up: those are the same first visit
    * talking, and all three at once is three people talking.
    */
-  const ringMenu = computed(
-    () => isMobile.value && !menuUsed.value && !running.value && !welcomeOpen.value,
-  )
+  const ringMenu = computed(() => isMobile.value && !menuUsed.value && !talking.value)
 
   /**
    * The sentence beside the ring. It goes when it is waved away; the ring
@@ -133,6 +139,7 @@ export const useOnboarding = defineStore('onboarding', () => {
   return {
     welcomeSeen,
     welcomeOpen,
+    talking,
     ringMenu,
     hintMenu,
     step,
